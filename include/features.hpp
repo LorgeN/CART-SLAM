@@ -3,11 +3,7 @@
 
 #include "datasource.hpp"
 
-#ifdef CARTSLAM_USE_GPU
 #include "opencv2/cudafeatures2d.hpp"
-#else
-#include "opencv2/features2d.hpp"
-#endif
 
 namespace cart {
 typedef std::function<std::vector<cv::KeyPoint>(const CARTSLAM_IMAGE_TYPE)> FeatureDetector;

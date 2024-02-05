@@ -22,13 +22,8 @@ int main(int argc, char* argv[]) {
     cv::Mat keypointsImage;
     cv::Mat leftDownload, rightDownload;
 
-#ifdef CARTSLAM_USE_GPU
     element->left.download(leftDownload);
     element->right.download(rightDownload);
-#else
-    leftDownload = element->left;
-    rightDownload = element->right;
-#endif
 
     std::vector<cv::KeyPoint> leftKeypoints = detector(element->left);
     cv::drawKeypoints(leftDownload, leftKeypoints, keypointsImage);

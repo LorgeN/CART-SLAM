@@ -1,8 +1,7 @@
 #include "features.hpp"
-
-#ifdef CARTSLAM_USE_GPU
 #include "opencv2/cudaimgproc.hpp"
-#endif
+
+#define CARTSLAM_OPTION_KEYPOINTS 3000
 
 namespace cart {
 std::vector<cv::KeyPoint> detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image) {
@@ -12,11 +11,7 @@ std::vector<cv::KeyPoint> detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image) {
 
     try {
         if (image.type() != CV_8UC1) {
-#ifdef CARTSLAM_USE_GPU
             cv::cuda::cvtColor(image, imageCopy, cv::COLOR_BGR2GRAY);
-#else
-            cv::cvtColor(image, imageCopy, cv::COLOR_BGR2GRAY);
-#endif
         } else {
             imageCopy = image;
         }
@@ -25,11 +20,7 @@ std::vector<cv::KeyPoint> detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image) {
         throw ex;
     }
 
-#ifdef CARTSLAM_USE_GPU
-    cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(3000);
-#else
-    cv::Ptr<cv::ORB> orb = cv::ORB::create(3000);
-#endif
+    cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(CARTSLAM_OPTION_KEYPOINTS);
 
     try {
         orb->detect(imageCopy, keypoints, cv::noArray());

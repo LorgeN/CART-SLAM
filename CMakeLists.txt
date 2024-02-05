@@ -12,8 +12,6 @@ project( CART-SLAM LANGUAGES CUDA CXX )
 find_package( OpenCV REQUIRED )
 include_directories (${OpenCV_INCLUDE_DIRS} )
 
-add_compile_definitions( CARTSLAM_USE_GPU )
-
 add_executable( cart_slam 
     src/cartslam.cpp 
     src/datasource.cpp 

@@ -3,11 +3,7 @@
 
 #include "opencv2/opencv.hpp"
 
-#ifdef CARTSLAM_USE_GPU
 #define CARTSLAM_IMAGE_TYPE cv::cuda::GpuMat
-#else
-#define CARTSLAM_IMAGE_TYPE cv::Mat
-#endif
 
 namespace cart {
 enum DataElementType {
