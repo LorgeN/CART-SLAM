@@ -1,11 +1,34 @@
 #include "datasource.hpp"
 
+#include "opencv2/cudawarping.hpp"
+
 std::string addLeadingZeros(int number, std::size_t length) {
     std::string numberAsString = std::to_string(number);
     return std::string(length - std::min(length, numberAsString.length()), '0') + numberAsString;
 }
 
 namespace cart {
+DataElement* DataSource::getNext(cv::cuda::Stream stream) {
+    auto element = this->getNextInternal(stream);
+
+    switch (element->getType()) {
+        case STEREO: {
+            auto stereoElement = static_cast<StereoDataElement*>(element);
+            if (stereoElement->left.rows != CARTSLAM_IMAGE_RES_X || stereoElement->left.cols != CARTSLAM_IMAGE_RES_Y) {
+                cv::cuda::resize(stereoElement->left, stereoElement->left, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
+            }
+
+            if (stereoElement->right.rows != CARTSLAM_IMAGE_RES_X || stereoElement->right.cols != CARTSLAM_IMAGE_RES_Y) {
+                cv::cuda::resize(stereoElement->right, stereoElement->right, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
+            }
+        } break;
+        default:
+            break;
+    }
+
+    return element;
+}
+
 KITTIDataSource::KITTIDataSource(std::string basePath, int sequence) {
     this->path = basePath + "/sequences/" + addLeadingZeros(sequence, 2);
     this->currentFrame = 0;
@@ -20,28 +43,18 @@ DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-DataElement* KITTIDataSource::getNext() {
-    try {
-        cv::Mat left = cv::imread(this->path + "/image_2/" + addLeadingZeros(this->currentFrame, 6) + ".png");
-        cv::Mat right = cv::imread(this->path + "/image_3/" + addLeadingZeros(this->currentFrame, 6) + ".png");
+DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream stream) {
+    cv::Mat left = cv::imread(this->path + "/image_2/" + addLeadingZeros(this->currentFrame, 6) + ".png");
+    cv::Mat right = cv::imread(this->path + "/image_3/" + addLeadingZeros(this->currentFrame, 6) + ".png");
 
-        this->currentFrame++;
+    this->currentFrame++;
 
-#ifdef CARTSLAM_USE_GPU
-        cv::cuda::GpuMat leftGpu;
-        cv::cuda::GpuMat rightGpu;
+    auto element = new StereoDataElement();
 
-        leftGpu.upload(left);
-        rightGpu.upload(right);
+    element->left.upload(left, stream);
+    element->right.upload(right, stream);
 
-        return new StereoDataElement(leftGpu, rightGpu);
-#else
-        return new StereoDataElement(left, right);
-#endif
-    } catch (const cv::Exception& ex) {
-        std::cout << "Error while reading image: " << ex.what() << std::endl;
-        return nullptr;
-    }
+    return element;
 }
 
 }  // namespace cart

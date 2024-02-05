@@ -14,8 +14,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    cv::cuda::Stream stream = cv::cuda::Stream();
+
     cart::KITTIDataSource dataSource(argv[1], 0);
-    cart::StereoDataElement* element = static_cast<cart::StereoDataElement*>(dataSource.getNext());
+    cart::StereoDataElement* element = static_cast<cart::StereoDataElement*>(dataSource.getNextInternal(stream));
 
     cart::FeatureDetector detector = cart::detectOrbFeatures;
 
@@ -25,13 +27,13 @@ int main(int argc, char* argv[]) {
     element->left.download(leftDownload);
     element->right.download(rightDownload);
 
-    std::vector<cv::KeyPoint> leftKeypoints = detector(element->left);
-    cv::drawKeypoints(leftDownload, leftKeypoints, keypointsImage);
+    cart::ImageFeatures leftKeypoints = detector(element->left, stream);
+    cv::drawKeypoints(leftDownload, leftKeypoints.keypoints, keypointsImage);
     cv::imshow("Left keypoints", keypointsImage);
     cv::waitKey();
 
-    std::vector<cv::KeyPoint> rightKeypoints = detector(element->right);
-    cv::drawKeypoints(rightDownload, rightKeypoints, keypointsImage);
+    cart::ImageFeatures rightKeypoints = detector(element->right, stream);
+    cv::drawKeypoints(rightDownload, rightKeypoints.keypoints, keypointsImage);
     cv::imshow("Right keypoints", keypointsImage);
     cv::waitKey();
 
