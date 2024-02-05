@@ -2,7 +2,7 @@
 
 #include "opencv2/cudaimgproc.hpp"
 
-#define CARTSLAM_OPTION_KEYPOINTS 3000
+#define CARTSLAM_OPTION_KEYPOINTS 10000
 
 const cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(CARTSLAM_OPTION_KEYPOINTS);
 

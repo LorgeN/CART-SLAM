@@ -7,6 +7,7 @@
 #include "features.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/opencv.hpp"
+#include "timing.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -17,25 +18,21 @@ int main(int argc, char* argv[]) {
     cv::cuda::Stream stream = cv::cuda::Stream();
 
     cart::KITTIDataSource dataSource(argv[1], 0);
-    cart::StereoDataElement* element = static_cast<cart::StereoDataElement*>(dataSource.getNextInternal(stream));
-
     cart::FeatureDetector detector = cart::detectOrbFeatures;
 
-    cv::Mat keypointsImage;
-    cv::Mat leftDownload, rightDownload;
+    CARTSLAM_START_AVERAGE_TIMING(keypoints);
 
-    element->left.download(leftDownload);
-    element->right.download(rightDownload);
+    for (int i = 0; i < 1000; i++) {
+        CARTSLAM_START_TIMING(keypoints);
 
-    cart::ImageFeatures leftKeypoints = detector(element->left, stream);
-    cv::drawKeypoints(leftDownload, leftKeypoints.keypoints, keypointsImage);
-    cv::imshow("Left keypoints", keypointsImage);
-    cv::waitKey();
+        cart::StereoDataElement* element = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
+        detector(element->left, stream);
 
-    cart::ImageFeatures rightKeypoints = detector(element->right, stream);
-    cv::drawKeypoints(rightDownload, rightKeypoints.keypoints, keypointsImage);
-    cv::imshow("Right keypoints", keypointsImage);
-    cv::waitKey();
+        CARTSLAM_END_TIMING(keypoints);
+        CARTSLAM_INCREMENT_AVERAGE_TIMING(keypoints);
+    }
+
+    CARTSLAM_END_AVERAGE_TIMING(keypoints);
 
     return 0;
 }
