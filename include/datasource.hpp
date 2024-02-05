@@ -38,8 +38,8 @@ class StereoDataElement : public DataElement {
 class DataSource {
    public:
     virtual ~DataSource() = default;
-    DataElement* getNext(cv::cuda::Stream stream);
-    virtual DataElement* getNextInternal(cv::cuda::Stream stream) = 0;
+    DataElement* getNext(cv::cuda::Stream &stream);
+    virtual DataElement* getNextInternal(cv::cuda::Stream &stream) = 0;
     virtual DataElementType getProvidedType() = 0;
 };
 
@@ -47,7 +47,7 @@ class KITTIDataSource : public DataSource {
    public:
     KITTIDataSource(std::string basePath, int sequence);
     KITTIDataSource(std::string path);
-    DataElement* getNextInternal(cv::cuda::Stream stream) override;
+    DataElement* getNextInternal(cv::cuda::Stream &stream) override;
     DataElementType getProvidedType() override;
 
    private:

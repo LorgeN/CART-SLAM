@@ -18,6 +18,7 @@ add_executable( cart_slam
     src/cartslam.cpp 
     src/datasource.cpp 
     src/features.cpp 
+    src/optflow.cpp
 )
 
 target_include_directories( cart_slam PRIVATE include )

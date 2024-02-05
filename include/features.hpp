@@ -18,9 +18,9 @@ class ImageFeatures {
     cv::cuda::GpuMat descriptors;
 };
 
-typedef std::function<ImageFeatures(const CARTSLAM_IMAGE_TYPE, cv::cuda::Stream)> FeatureDetector;
+typedef std::function<ImageFeatures(const CARTSLAM_IMAGE_TYPE, cv::cuda::Stream &)> FeatureDetector;
 
-ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream stream);
+ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream &stream);
 }  // namespace cart
 
 #endif

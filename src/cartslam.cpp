@@ -1,12 +1,13 @@
 #include "cartslam.hpp"
 
 #include <iostream>
-#include <opencv2/cudaarithm.hpp>
 
 #include "datasource.hpp"
 #include "features.hpp"
 #include "opencv2/core/cuda.hpp"
+#include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
+#include "optflow.hpp"
 #include "timing.hpp"
 
 int main(int argc, char* argv[]) {
@@ -16,8 +17,49 @@ int main(int argc, char* argv[]) {
     }
 
     cv::cuda::Stream stream = cv::cuda::Stream();
+    auto opticalFlow = cart::createOpticalFlow(stream);
 
     cart::KITTIDataSource dataSource(argv[1], 0);
+    cart::StereoDataElement* element1;
+    cart::StereoDataElement* element2 = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
+
+    CARTSLAM_START_AVERAGE_TIMING(optflow);
+
+    for (int i = 0; i < 1000; i++) {
+        CARTSLAM_START_TIMING(optflow);
+        element1 = element2;
+        element2 = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
+
+        cart::ImageOpticalFlow imageFlow = cart::detectOpticalFlow(element1->left, element2->left, opticalFlow);
+
+        CARTSLAM_END_TIMING(optflow);
+        CARTSLAM_INCREMENT_AVERAGE_TIMING(optflow);
+
+        cv::Mat flowImage = cart::drawOpticalFlow(imageFlow, opticalFlow, stream);
+
+        cv::Mat image1, image2;
+        element1->left.download(image1, stream);
+        element2->left.download(image2, stream);
+        stream.waitForCompletion();
+
+        cv::cvtColor(image1, image1, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(image2, image2, cv::COLOR_GRAY2BGR);
+
+        cv::Mat concatRes;
+
+        cv::vconcat(image1, image2, concatRes);
+        cv::vconcat(concatRes, flowImage, concatRes);
+
+        cv::imshow("Optical Flow", concatRes);
+
+        if (cv::waitKey(100) == 27) {
+            break;
+        }
+    }
+
+    CARTSLAM_END_AVERAGE_TIMING(optflow);
+
+    /*
     cart::FeatureDetector detector = cart::detectOrbFeatures;
 
     CARTSLAM_START_AVERAGE_TIMING(keypoints);
@@ -33,6 +75,7 @@ int main(int argc, char* argv[]) {
     }
 
     CARTSLAM_END_AVERAGE_TIMING(keypoints);
+    */
 
     return 0;
 }

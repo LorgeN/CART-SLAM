@@ -1,5 +1,6 @@
 #include "datasource.hpp"
 
+#include "opencv2/cudaimgproc.hpp"
 #include "opencv2/cudawarping.hpp"
 
 std::string addLeadingZeros(int number, std::size_t length) {
@@ -7,20 +8,25 @@ std::string addLeadingZeros(int number, std::size_t length) {
     return std::string(length - std::min(length, numberAsString.length()), '0') + numberAsString;
 }
 
+void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream &stream) {
+    if (image.rows != CARTSLAM_IMAGE_RES_X || image.cols != CARTSLAM_IMAGE_RES_Y) {
+        cv::cuda::resize(image, image, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
+    }
+
+    if (image.type() != CV_8UC1) {
+        cv::cuda::cvtColor(image, image, cv::COLOR_BGR2GRAY, 0, stream);
+    }
+}
+
 namespace cart {
-DataElement* DataSource::getNext(cv::cuda::Stream stream) {
+DataElement* DataSource::getNext(cv::cuda::Stream &stream) {
     auto element = this->getNextInternal(stream);
 
     switch (element->getType()) {
         case STEREO: {
             auto stereoElement = static_cast<StereoDataElement*>(element);
-            if (stereoElement->left.rows != CARTSLAM_IMAGE_RES_X || stereoElement->left.cols != CARTSLAM_IMAGE_RES_Y) {
-                cv::cuda::resize(stereoElement->left, stereoElement->left, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
-            }
-
-            if (stereoElement->right.rows != CARTSLAM_IMAGE_RES_X || stereoElement->right.cols != CARTSLAM_IMAGE_RES_Y) {
-                cv::cuda::resize(stereoElement->right, stereoElement->right, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
-            }
+            processImage(stereoElement->left, stream);
+            processImage(stereoElement->right, stream);
         } break;
         default:
             break;
@@ -43,7 +49,7 @@ DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream stream) {
+DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream &stream) {
     cv::Mat left = cv::imread(this->path + "/image_2/" + addLeadingZeros(this->currentFrame, 6) + ".png");
     cv::Mat right = cv::imread(this->path + "/image_3/" + addLeadingZeros(this->currentFrame, 6) + ".png");
 
