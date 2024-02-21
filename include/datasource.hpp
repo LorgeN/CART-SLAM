@@ -35,11 +35,26 @@ class StereoDataElement : public DataElement {
     CARTSLAM_IMAGE_TYPE right;
 };
 
+template <typename T>
+class DataElementVisitor {
+   public:
+    virtual T visitStereo(StereoDataElement* element) = 0;
+    T operator()(DataElement* element) {
+        switch (element->getType()) {
+            case STEREO: {
+                return this->visitStereo(static_cast<StereoDataElement*>(element));
+            } break;
+            default:
+                throw std::runtime_error("Unknown data element type");
+        }
+    }
+};
+
 class DataSource {
    public:
     virtual ~DataSource() = default;
-    DataElement* getNext(cv::cuda::Stream &stream);
-    virtual DataElement* getNextInternal(cv::cuda::Stream &stream) = 0;
+    DataElement* getNext(cv::cuda::Stream& stream);
+    virtual DataElement* getNextInternal(cv::cuda::Stream& stream) = 0;
     virtual DataElementType getProvidedType() = 0;
 };
 
@@ -47,13 +62,14 @@ class KITTIDataSource : public DataSource {
    public:
     KITTIDataSource(std::string basePath, int sequence);
     KITTIDataSource(std::string path);
-    DataElement* getNextInternal(cv::cuda::Stream &stream) override;
+    DataElement* getNextInternal(cv::cuda::Stream& stream) override;
     DataElementType getProvidedType() override;
 
    private:
     std::string path;
     int currentFrame;
 };
+
 }  // namespace cart
 
 #endif  // CARTSLAM_DATASOURCE_HPP

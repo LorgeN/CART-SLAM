@@ -20,7 +20,7 @@ cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &str
 
 ImageOpticalFlow detectOpticalFlow(const CARTSLAM_IMAGE_TYPE input, const CARTSLAM_IMAGE_TYPE reference, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> &flow);
 
-cv::Mat drawOpticalFlow(const ImageOpticalFlow& imageFlow, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> &opticalFlow, cv::cuda::Stream &stream);
+cv::Mat drawOpticalFlow(const ImageOpticalFlow &imageFlow, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> &opticalFlow, cv::cuda::Stream &stream);
 
 }  // namespace cart
 

@@ -1,81 +1,115 @@
 #include "cartslam.hpp"
 
-#include <iostream>
-
-#include "datasource.hpp"
-#include "features.hpp"
-#include "opencv2/core/cuda.hpp"
-#include "opencv2/cudaarithm.hpp"
-#include "opencv2/opencv.hpp"
-#include "optflow.hpp"
-#include "timing.hpp"
-
-int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cout << "Please provide an image file to process." << std::endl;
-        return 1;
+namespace cart {
+SystemRunData::~SystemRunData() {
+    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    for (auto data : this->data) {
+        free(data.second);  // Use free since these are void*
     }
-
-    cv::cuda::Stream stream = cv::cuda::Stream();
-    auto opticalFlow = cart::createOpticalFlow(stream);
-
-    cart::KITTIDataSource dataSource(argv[1], 0);
-    cart::StereoDataElement* element1;
-    cart::StereoDataElement* element2 = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
-
-    CARTSLAM_START_AVERAGE_TIMING(optflow);
-
-    for (int i = 0; i < 1000; i++) {
-        CARTSLAM_START_TIMING(optflow);
-        element1 = element2;
-        element2 = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
-
-        cart::ImageOpticalFlow imageFlow = cart::detectOpticalFlow(element1->left, element2->left, opticalFlow);
-
-        CARTSLAM_END_TIMING(optflow);
-        CARTSLAM_INCREMENT_AVERAGE_TIMING(optflow);
-
-        cv::Mat flowImage = cart::drawOpticalFlow(imageFlow, opticalFlow, stream);
-
-        cv::Mat image1, image2;
-        element1->left.download(image1, stream);
-        element2->left.download(image2, stream);
-        stream.waitForCompletion();
-
-        cv::cvtColor(image1, image1, cv::COLOR_GRAY2BGR);
-        cv::cvtColor(image2, image2, cv::COLOR_GRAY2BGR);
-
-        cv::Mat concatRes;
-
-        cv::vconcat(image1, image2, concatRes);
-        cv::vconcat(concatRes, flowImage, concatRes);
-
-        cv::imshow("Optical Flow", concatRes);
-
-        if (cv::waitKey(100) == 27) {
-            break;
-        }
-    }
-
-    CARTSLAM_END_AVERAGE_TIMING(optflow);
-
-    /*
-    cart::FeatureDetector detector = cart::detectOrbFeatures;
-
-    CARTSLAM_START_AVERAGE_TIMING(keypoints);
-
-    for (int i = 0; i < 1000; i++) {
-        CARTSLAM_START_TIMING(keypoints);
-
-        cart::StereoDataElement* element = static_cast<cart::StereoDataElement*>(dataSource.getNext(stream));
-        detector(element->left, stream);
-
-        CARTSLAM_END_TIMING(keypoints);
-        CARTSLAM_INCREMENT_AVERAGE_TIMING(keypoints);
-    }
-
-    CARTSLAM_END_AVERAGE_TIMING(keypoints);
-    */
-
-    return 0;
 }
+
+DataElement* SystemRunData::getDataElement() {
+    return this->dataElement;
+}
+
+template <typename T>
+T* SystemRunData::getData(std::string key) {
+    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    if (!this->data.count(key)) {
+        throw std::invalid_argument("Could not find key");
+    }
+
+    return static_cast<T*>(this->data[key]);
+}
+
+template <typename T>
+boost::future<T*> SystemRunData::getDataAsync(std::string key) {
+    boost::promise<T*> promise;
+
+    boost::asio::post(this->system.threadPool, [this, &promise, key] {
+        boost::unique_lock<boost::mutex> lock(this->dataMutex);
+        while (!this->data.count(key)) {
+            this->dataCondition.wait(lock);
+        }
+
+        promise.set_value(static_cast<T*>(this->data[key]));
+    });
+
+    return promise.get_future();
+}
+
+void SystemRunData::insertData(MODULE_RETURN_VALUE_PAIR& data) {
+    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    this->data.insert(data);
+    this->dataCondition.notify_all();
+}
+
+boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
+    boost::promise<MODULE_RETURN_VALUE> promise;
+
+    boost::asio::post(system.threadPool, [this, &system, &data, &promise] {
+        promise.set_value(this->runInternal(system, data));
+    });
+
+    return promise.get_future();
+}
+
+System::System(DataSource* source) {
+    this->dataSource = source;
+}
+
+System::~System() {
+    for (auto module : this->modules) {
+        delete module;
+    }
+
+    delete this->dataSource;
+}
+
+void System::addModule(SystemModule* module) {
+    this->modules.push_back(module);
+}
+
+boost::future<void> System::run() {
+    std::cout << "Running system" << std::endl;
+    cv::cuda::Stream stream;
+    auto element = this->dataSource->getNext(stream);
+
+    // TODO: Sort the modules topologically for more efficient execution order
+
+    SystemRunData runData(*this, element);
+
+    std::vector<boost::future<void>> moduleFutures;
+
+    for (auto module : this->modules) {
+        boost::future<MODULE_RETURN_VALUE> future;
+
+        if (module->dependsOn.size() > 0) {
+            std::vector<boost::future<void*>> dependencies;
+
+            for (auto dependency : module->dependsOn) {
+                dependencies.push_back(runData.getDataAsync<void>(dependency));
+            }
+
+            future = boost::when_all(dependencies.begin(), dependencies.end())
+                         .then([this, &runData, module](auto) {
+                             return module->run(*this, runData);
+                         })
+                         .unwrap();
+        } else {
+            future = module->run(*this, runData);
+        }
+
+        future.then([this, &runData](boost::future<MODULE_RETURN_VALUE> future) {
+            auto data = future.get();
+            if (data) {
+                std::cout << "Got data from " << data->first << std::endl;
+                runData.insertData(*data);
+            }
+        });
+    }
+
+    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([element](auto) {});
+}
+
+}  // namespace cart

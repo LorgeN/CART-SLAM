@@ -8,7 +8,7 @@ std::string addLeadingZeros(int number, std::size_t length) {
     return std::string(length - std::min(length, numberAsString.length()), '0') + numberAsString;
 }
 
-void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream &stream) {
+void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
     if (image.rows != CARTSLAM_IMAGE_RES_X || image.cols != CARTSLAM_IMAGE_RES_Y) {
         cv::cuda::resize(image, image, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
     }
@@ -19,7 +19,7 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream &stream) {
 }
 
 namespace cart {
-DataElement* DataSource::getNext(cv::cuda::Stream &stream) {
+DataElement* DataSource::getNext(cv::cuda::Stream& stream) {
     auto element = this->getNextInternal(stream);
 
     switch (element->getType()) {
@@ -49,7 +49,7 @@ DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream &stream) {
+DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream& stream) {
     cv::Mat left = cv::imread(this->path + "/image_2/" + addLeadingZeros(this->currentFrame, 6) + ".png");
     cv::Mat right = cv::imread(this->path + "/image_3/" + addLeadingZeros(this->currentFrame, 6) + ".png");
 
