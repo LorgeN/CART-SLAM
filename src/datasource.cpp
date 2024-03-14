@@ -22,7 +22,7 @@ namespace cart {
 DataElement* DataSource::getNext(cv::cuda::Stream& stream) {
     auto element = this->getNextInternal(stream);
 
-    switch (element->getType()) {
+    switch (element->type) {
         case STEREO: {
             auto stereoElement = static_cast<StereoDataElement*>(element);
             processImage(stereoElement->left, stream);

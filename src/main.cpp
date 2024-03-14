@@ -3,6 +3,7 @@
 #include "cartslam.hpp"
 #include "datasource.hpp"
 #include "features.hpp"
+#include "logging.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
@@ -18,10 +19,21 @@ int main(int argc, char* argv[]) {
     // cv::cuda::Stream stream = cv::cuda::Stream();
     // auto opticalFlow = cart::createOpticalFlow(stream);
 
+    cart::configureLogging("app.log");
+
     cart::System system(new cart::KITTIDataSource(argv[1], 0));
     system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
 
-    system.run();
+    CARTSLAM_START_AVERAGE_TIMING(system);
+
+    for (int i = 0; i < 1000; i++) {
+        CARTSLAM_START_TIMING(system);
+        system.run().wait();
+        CARTSLAM_END_TIMING(system);
+        CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
+    }
+
+    CARTSLAM_END_AVERAGE_TIMING(system);
 
     /*
     cart::StereoDataElement* element1;

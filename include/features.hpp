@@ -1,6 +1,8 @@
 #ifndef CARTSLAM_FEATURES_HPP
 #define CARTSLAM_FEATURES_HPP
 
+#include <log4cxx/logger.h>
+
 #include "cartslam.hpp"
 #include "datasource.hpp"
 #include "opencv2/cudafeatures2d.hpp"
@@ -17,27 +19,29 @@ class ImageFeatures {
     cv::cuda::GpuMat descriptors;
 };
 
-typedef std::function<ImageFeatures(const CARTSLAM_IMAGE_TYPE, cv::cuda::Stream&)> FeatureDetector;
+typedef std::function<ImageFeatures(const CARTSLAM_IMAGE_TYPE, cv::cuda::Stream&, log4cxx::LoggerPtr)> FeatureDetector;
 
-ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream& stream);
+ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream& stream, log4cxx::LoggerPtr logger);
 
 class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
    public:
-    ImageFeatureDetectorModule(FeatureDetector detector) : detector(detector) {}
+    ImageFeatureDetectorModule(FeatureDetector detector) : SyncWrapperSystemModule("ImageFeatureDetector"), detector(detector){};
+
     MODULE_RETURN_VALUE runInternal(System& system, SystemRunData& data) override;
 
    private:
-    FeatureDetector detector;
+    const FeatureDetector detector;
 };
 
 class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {
    public:
-    ImageFeatureDetectorVisitor(FeatureDetector& detector, cv::cuda::Stream& stream) : detector(detector), stream(stream) {}
+    ImageFeatureDetectorVisitor(const FeatureDetector& detector, cv::cuda::Stream& stream, log4cxx::LoggerPtr logger) : detector(detector), stream(stream), logger(logger){};
     void* visitStereo(StereoDataElement* element) override;
 
    private:
     cv::cuda::Stream stream;
-    FeatureDetector detector;
+    const FeatureDetector detector;
+    log4cxx::LoggerPtr logger;
 };
 }  // namespace cart
 

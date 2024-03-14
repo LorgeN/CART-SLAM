@@ -13,4 +13,4 @@ Command:
 cmake -S . -B build
 ```
 
-Optionally you can use `-DCMAKE_CXX_COMPILER=<your compiler>` and `-DCMAKE_CUDA_COMPILER=<your CUDA compiler>` to specify which compilers to use.
+Optionally you can use `-DCMAKE_CXX_COMPILER=<your compiler>` and `-DCMAKE_CUDA_COMPILER=<your CUDA compiler>` to specify which compilers to use. A useful flag for debugging is `-DCMAKE_BUILD_TYPE=Debug`.

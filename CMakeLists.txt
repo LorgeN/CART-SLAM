@@ -18,7 +18,7 @@ include_directories(${Boost_INCLUDE_DIRS})
 find_package( OpenCV REQUIRED )
 include_directories (${OpenCV_INCLUDE_DIRS} )
 
-add_compile_definitions( CARTSLAM_TIMING )
+find_package(log4cxx 1.1)
 
 add_executable( cart_slam 
     src/main.cpp 
@@ -26,8 +26,17 @@ add_executable( cart_slam
     src/datasource.cpp 
     src/features.cpp 
     src/optflow.cpp
+    src/logging.cpp
 )
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
+endif()
 
 target_include_directories( cart_slam PRIVATE include )
 target_link_libraries( cart_slam ${OpenCV_LIBS} )
 target_link_libraries( cart_slam Boost::system Boost::thread )
+
+target_include_directories( cart_slam PRIVATE $<TARGET_PROPERTY:log4cxx,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries( cart_slam log4cxx)

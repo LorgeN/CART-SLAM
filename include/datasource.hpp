@@ -14,22 +14,18 @@ enum DataElementType {
 
 class DataElement {
    public:
+    DataElement(DataElementType type) : type(type){};
+
     virtual ~DataElement() = default;
-    virtual DataElementType getType() = 0;
+
+    const DataElementType type;
 };
 
 class StereoDataElement : public DataElement {
    public:
-    StereoDataElement() = default;
+    StereoDataElement() : DataElement(DataElementType::STEREO){};
 
-    StereoDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) {
-        this->left = left;
-        this->right = right;
-    }
-
-    DataElementType getType() override {
-        return DataElementType::STEREO;
-    }
+    StereoDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) : DataElement(DataElementType::STEREO), left(left), right(right){};
 
     CARTSLAM_IMAGE_TYPE left;
     CARTSLAM_IMAGE_TYPE right;
@@ -40,7 +36,7 @@ class DataElementVisitor {
    public:
     virtual T visitStereo(StereoDataElement* element) = 0;
     T operator()(DataElement* element) {
-        switch (element->getType()) {
+        switch (element->type) {
             case STEREO: {
                 return this->visitStereo(static_cast<StereoDataElement*>(element));
             } break;
