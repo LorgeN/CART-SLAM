@@ -3,9 +3,11 @@
 
 #include <log4cxx/logger.h>
 
+#include <opencv2/cudafeatures2d.hpp>
+
 #include "cartslam.hpp"
 #include "datasource.hpp"
-#include "opencv2/cudafeatures2d.hpp"
+#include "utils/ui.hpp"
 
 namespace cart {
 class ImageFeatures {
@@ -31,6 +33,16 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
 
    private:
     const FeatureDetector detector;
+};
+
+class ImageFeatureVisualizationModule : public SystemModule {
+   public:
+    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {"features"}), imageThread("Features"){};
+
+    boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
+
+   private:
+    cart::ImageThread imageThread;
 };
 
 class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {

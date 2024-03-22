@@ -22,9 +22,10 @@ int main(int argc, char* argv[]) {
     cart::configureLogging("app.log");
 
     cart::System system(new cart::KITTIDataSource(argv[1], 0));
-    // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
-    system.addModule(new cart::ImageOpticalFlowModule());
-    system.addModule(new cart::ImageOpticalFlowVisualizationModule());
+    system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
+    system.addModule(new cart::ImageFeatureVisualizationModule());
+    // system.addModule(new cart::ImageOpticalFlowModule());
+    // system.addModule(new cart::ImageOpticalFlowVisualizationModule());
 
     CARTSLAM_START_AVERAGE_TIMING(system);
 
