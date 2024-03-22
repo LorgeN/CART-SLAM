@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
 
     boost::future<void> last;
 
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 5000; i++) {
         CARTSLAM_START_TIMING(system);
         last = system.run();
         CARTSLAM_END_TIMING(system);

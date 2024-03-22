@@ -2,7 +2,6 @@
 
 namespace cart {
 SystemRunData::~SystemRunData() {
-    boost::lock_guard<boost::mutex> lock(this->dataMutex);
     for (auto data : this->data) {
         free(data.second);  // Use free since these are void*
     }
@@ -64,15 +63,13 @@ void System::addModule(SystemModule* module) {
 }
 
 uint8_t System::getActiveRunCount() {
-    uint8_t count = 0;
-
-    for (auto run : this->runs) {
-        if (!run->isComplete()) {
-            count++;
+    for (uint8_t i = 0; i < this->runs.size(); i++) {
+        if (!this->runs[i]->isComplete()) {
+            return this->runs.size() - i;
         }
     }
 
-    return count;
+    return 0;
 }
 
 SystemRunData* System::startNewRun(cv::cuda::Stream& stream) {
@@ -175,7 +172,7 @@ boost::future<void> System::run() {
         LOG4CXX_DEBUG(logger, "Run with ID " << runData->id << " has completed");
 
         boost::lock_guard<boost::mutex> lock(this->runMutex);
-        this->runCondition.notify_one();
+        this->runCondition.notify_all();
     });
 }
 

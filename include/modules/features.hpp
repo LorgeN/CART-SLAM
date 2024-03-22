@@ -51,7 +51,7 @@ class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {
     void* visitStereo(StereoDataElement* element) override;
 
    private:
-    cv::cuda::Stream stream;
+    cv::cuda::Stream& stream;
     const FeatureDetector detector;
     log4cxx::LoggerPtr logger;
 };
