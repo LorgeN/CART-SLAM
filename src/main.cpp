@@ -2,12 +2,12 @@
 
 #include "cartslam.hpp"
 #include "datasource.hpp"
-#include "features.hpp"
 #include "logging.hpp"
+#include "modules/features.hpp"
+#include "modules/optflow.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
-#include "optflow.hpp"
 #include "timing.hpp"
 
 int main(int argc, char* argv[]) {
@@ -22,17 +22,22 @@ int main(int argc, char* argv[]) {
     cart::configureLogging("app.log");
 
     cart::System system(new cart::KITTIDataSource(argv[1], 0));
-    system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
+    // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
+    system.addModule(new cart::ImageOpticalFlowModule());
+    system.addModule(new cart::ImageOpticalFlowVisualizationModule());
 
     CARTSLAM_START_AVERAGE_TIMING(system);
 
+    boost::future<void> last;
+
     for (int i = 0; i < 1000; i++) {
         CARTSLAM_START_TIMING(system);
-        system.run().wait();
+        last = system.run();
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
+    last.wait();
     CARTSLAM_END_AVERAGE_TIMING(system);
 
     /*

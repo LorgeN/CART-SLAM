@@ -2,7 +2,7 @@
 
 namespace cart {
 SystemRunData::~SystemRunData() {
-    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    boost::lock_guard<boost::mutex> lock(this->dataMutex);
     for (auto data : this->data) {
         free(data.second);  // Use free since these are void*
     }
@@ -10,35 +10,9 @@ SystemRunData::~SystemRunData() {
     delete this->dataElement;
 }
 
-template <typename T>
-T* SystemRunData::getData(std::string key) {
-    boost::unique_lock<boost::mutex> lock(this->dataMutex);
-    if (!this->data.count(key)) {
-        throw std::invalid_argument("Could not find key");
-    }
-
-    return static_cast<T*>(this->data[key]);
-}
-
-template <typename T>
-boost::future<T*> SystemRunData::getDataAsync(std::string key) {
-    boost::promise<T*> promise;
-
-    boost::asio::post(this->system->threadPool, [this, &promise, key] {
-        boost::unique_lock<boost::mutex> lock(this->dataMutex);
-        while (!this->data.count(key)) {
-            this->dataCondition.wait(lock);
-        }
-
-        promise.set_value(static_cast<T*>(this->data[key]));
-    });
-
-    return promise.get_future();
-}
-
 void SystemRunData::insertData(MODULE_RETURN_VALUE_PAIR data) {
     LOG4CXX_INFO(this->system->logger, "Inserting data with key " << std::quoted(data.first));
-    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    boost::lock_guard<boost::mutex> lock(this->dataMutex);
     this->data.insert(data);
     LOG4CXX_DEBUG(this->system->logger, "Notifying all");
     this->dataCondition.notify_all();
@@ -50,6 +24,10 @@ bool SystemRunData::isComplete() {
 
 void SystemRunData::markAsComplete() {
     this->complete = true;
+}
+
+SystemRunData* SystemRunData::getRelativeRun(const int8_t offset) {
+    return this->system->getRunById(this->id + offset);
 }
 
 boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
@@ -85,8 +63,28 @@ void System::addModule(SystemModule* module) {
     LOG4CXX_INFO(this->logger, "Added module " << module->name);
 }
 
+uint8_t System::getActiveRunCount() {
+    uint8_t count = 0;
+
+    for (auto run : this->runs) {
+        if (!run->isComplete()) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
 SystemRunData* System::startNewRun(cv::cuda::Stream& stream) {
+    boost::unique_lock<boost::mutex> lock(this->runMutex);
+    auto previousRunId = this->runId - 1;
     auto data = new SystemRunData(this->runId++, this, this->dataSource->getNext(stream));
+    // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
+    while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
+        LOG4CXX_DEBUG(this->logger, "Waiting for a run to complete");
+        this->runCondition.wait(lock);
+    }
+
     this->runs.push_back(data);
 
     if (this->runs.size() > CARTSLAM_RUN_RETENTION) {
@@ -148,6 +146,7 @@ boost::future<void> System::run() {
 
             future = boost::when_all(dependencies.begin(), dependencies.end())
                          .then([this, runData, module](auto) {
+                             LOG4CXX_DEBUG(this->logger, "All dependencies have been resolved for module " << std::quoted(module->name));
                              return module->run(*this, *runData);
                          })
                          .unwrap();
@@ -171,9 +170,12 @@ boost::future<void> System::run() {
 
     LOG4CXX_DEBUG(this->logger, "All modules have been submitted for execution");
     log4cxx::LoggerPtr logger = this->logger;
-    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([runData, logger](auto) {
+    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto) {
         runData->markAsComplete();
         LOG4CXX_DEBUG(logger, "Run with ID " << runData->id << " has completed");
+
+        boost::lock_guard<boost::mutex> lock(this->runMutex);
+        this->runCondition.notify_one();
     });
 }
 

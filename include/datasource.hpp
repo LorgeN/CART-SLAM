@@ -34,7 +34,10 @@ class StereoDataElement : public DataElement {
 template <typename T>
 class DataElementVisitor {
    public:
-    virtual T visitStereo(StereoDataElement* element) = 0;
+    virtual T visitStereo(StereoDataElement* element) {
+        throw std::runtime_error("Not implemented");
+    }
+
     T operator()(DataElement* element) {
         switch (element->type) {
             case STEREO: {

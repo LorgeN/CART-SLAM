@@ -23,10 +23,11 @@ find_package(log4cxx 1.1)
 add_executable( cart_slam 
     src/main.cpp 
     src/cartslam.cpp     
-    src/datasource.cpp 
-    src/features.cpp 
-    src/optflow.cpp
-    src/logging.cpp
+    src/datasource.cpp
+    src/logging.cpp 
+    src/modules/features.cpp 
+    src/modules/optflow.cpp
+    src/utils/ui.cpp
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
