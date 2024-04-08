@@ -2,8 +2,6 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 
-#define CARTSLAM_OPTION_KEYPOINTS 10000
-
 const cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(CARTSLAM_OPTION_KEYPOINTS);
 
 namespace cart {
@@ -11,10 +9,12 @@ MODULE_RETURN_VALUE ImageFeatureDetectorModule::runInternal(System &system, Syst
     LOG4CXX_DEBUG(this->logger, "Running ImageFeatureDetectorModule");
     cv::cuda::Stream stream;
     ImageFeatureDetectorVisitor visitor(this->detector, stream, this->logger);
-    return MODULE_RETURN_VALUE_PAIR("features", visitor(data.dataElement));
+
+    auto result = visitor(data.dataElement);
+    return MODULE_RETURN(CARTSLAM_KEY_FEATURES, boost::shared_ptr<void>(boost::move(result)));
 }
 
-void *ImageFeatureDetectorVisitor::visitStereo(StereoDataElement *element) {
+void *ImageFeatureDetectorVisitor::visitStereo(boost::shared_ptr<StereoDataElement> element) {
     auto leftFeatures = this->detector(element->left, this->stream, this->logger);
     auto rightFeatures = this->detector(element->right, this->stream, this->logger);
 
@@ -25,13 +25,13 @@ boost::future<MODULE_RETURN_VALUE> ImageFeatureVisualizationModule::run(System &
     auto promise = boost::make_shared<boost::promise<MODULE_RETURN_VALUE>>();
 
     boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
-        auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>("features");
+        auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>(CARTSLAM_KEY_FEATURES);
 
         cv::cuda::Stream stream;
         cv::Mat images[2];
 
         // TODO: Support for non-stereo images
-        cart::StereoDataElement *stereoData = static_cast<cart::StereoDataElement *>(data.dataElement);
+        boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
 
         stereoData->left.download(images[0], stream);
         stereoData->right.download(images[1], stream);

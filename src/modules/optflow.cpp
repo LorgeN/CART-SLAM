@@ -97,13 +97,14 @@ MODULE_RETURN_VALUE ImageOpticalFlowModule::runInternal(System &system, SystemRu
 
     ImageOpticalFlowVisitor visitor(data, flow, this->logger);
 
-    return MODULE_RETURN_VALUE_PAIR(CARTSLAM_KEY_OPTFLOW, visitor(data.dataElement));
+    auto result = visitor(data.dataElement);
+    return MODULE_RETURN(CARTSLAM_KEY_OPTFLOW, boost::shared_ptr<void>(boost::move(result)));
 }
 
-void *ImageOpticalFlowVisitor::visitStereo(StereoDataElement *element) {
-    SystemRunData *previousRun = this->data.getRelativeRun(-1);
+void *ImageOpticalFlowVisitor::visitStereo(boost::shared_ptr<StereoDataElement> element) {
+    boost::shared_ptr<SystemRunData> previousRun = this->data.getRelativeRun(-1);
     // The previous type of element should be the same as the current one
-    StereoDataElement *previousElement = static_cast<StereoDataElement *>(previousRun->dataElement);
+    boost::shared_ptr<StereoDataElement> previousElement = boost::static_pointer_cast<StereoDataElement>(previousRun->dataElement);
 
     ImageOpticalFlow flowLeft = detectOpticalFlow(element->left, previousElement->left, this->flow);
     ImageOpticalFlow flowRight = detectOpticalFlow(element->right, previousElement->right, this->flow);
@@ -122,7 +123,7 @@ boost::future<MODULE_RETURN_VALUE> ImageOpticalFlowVisualizationModule::run(Syst
         }
 
         // TODO: Support for none-stereo images
-        std::pair<ImageOpticalFlow, ImageOpticalFlow> *flows = data.getData<std::pair<ImageOpticalFlow, ImageOpticalFlow>>(CARTSLAM_KEY_OPTFLOW);
+        boost::shared_ptr<std::pair<ImageOpticalFlow, ImageOpticalFlow>> flows = data.getData<std::pair<ImageOpticalFlow, ImageOpticalFlow>>(CARTSLAM_KEY_OPTFLOW);
 
         cv::cuda::Stream stream;
         cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(stream);
@@ -133,8 +134,8 @@ boost::future<MODULE_RETURN_VALUE> ImageOpticalFlowVisualizationModule::run(Syst
         cv::Mat images[4];
         cv::Mat flowImages[2] = {flowImageLeft, flowImageRight};
 
-        StereoDataElement *element1 = static_cast<StereoDataElement *>(data.dataElement);
-        StereoDataElement *element2 = static_cast<StereoDataElement *>(data.getRelativeRun(-1)->dataElement);
+        boost::shared_ptr<StereoDataElement> element1 = boost::static_pointer_cast<StereoDataElement>(data.dataElement);
+        boost::shared_ptr<StereoDataElement> element2 = boost::static_pointer_cast<StereoDataElement>(data.getRelativeRun(-1)->dataElement);
 
         element1->left.download(images[0], stream);
         element1->right.download(images[1], stream);

@@ -9,6 +9,10 @@
 #include "datasource.hpp"
 #include "utils/ui.hpp"
 
+#define CARTSLAM_OPTION_KEYPOINTS 5000
+
+#define CARTSLAM_KEY_FEATURES "features"
+
 namespace cart {
 class ImageFeatures {
    public:
@@ -37,7 +41,7 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
 
 class ImageFeatureVisualizationModule : public SystemModule {
    public:
-    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {"features"}), imageThread("Features"){};
+    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {CARTSLAM_KEY_FEATURES}), imageThread("Features"){};
 
     boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
 
@@ -48,7 +52,7 @@ class ImageFeatureVisualizationModule : public SystemModule {
 class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {
    public:
     ImageFeatureDetectorVisitor(const FeatureDetector& detector, cv::cuda::Stream& stream, log4cxx::LoggerPtr logger) : detector(detector), stream(stream), logger(logger){};
-    void* visitStereo(StereoDataElement* element) override;
+    void* visitStereo(boost::shared_ptr<StereoDataElement> element) override;
 
    private:
     cv::cuda::Stream& stream;

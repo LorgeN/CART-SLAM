@@ -1,7 +1,8 @@
 #ifndef CARTSLAM_DATASOURCE_HPP
 #define CARTSLAM_DATASOURCE_HPP
 
-#include "opencv2/opencv.hpp"
+#include <boost/thread.hpp>
+#include <opencv2/opencv.hpp>
 
 #define CARTSLAM_IMAGE_TYPE cv::cuda::GpuMat
 #define CARTSLAM_IMAGE_RES_X 1280
@@ -34,14 +35,14 @@ class StereoDataElement : public DataElement {
 template <typename T>
 class DataElementVisitor {
    public:
-    virtual T visitStereo(StereoDataElement* element) {
+    virtual T visitStereo(boost::shared_ptr<StereoDataElement> element) {
         throw std::runtime_error("Not implemented");
     }
 
-    T operator()(DataElement* element) {
+    T operator()(boost::shared_ptr<DataElement> element) {
         switch (element->type) {
             case STEREO: {
-                return this->visitStereo(static_cast<StereoDataElement*>(element));
+                return this->visitStereo(boost::static_pointer_cast<StereoDataElement>(element));
             } break;
             default:
                 throw std::runtime_error("Unknown data element type");
@@ -52,8 +53,8 @@ class DataElementVisitor {
 class DataSource {
    public:
     virtual ~DataSource() = default;
-    DataElement* getNext(cv::cuda::Stream& stream);
-    virtual DataElement* getNextInternal(cv::cuda::Stream& stream) = 0;
+    boost::shared_ptr<DataElement> getNext(cv::cuda::Stream& stream);
+    virtual boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) = 0;
     virtual DataElementType getProvidedType() = 0;
 };
 
@@ -61,7 +62,7 @@ class KITTIDataSource : public DataSource {
    public:
     KITTIDataSource(std::string basePath, int sequence);
     KITTIDataSource(std::string path);
-    DataElement* getNextInternal(cv::cuda::Stream& stream) override;
+    boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) override;
     DataElementType getProvidedType() override;
 
    private:

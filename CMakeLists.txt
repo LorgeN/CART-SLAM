@@ -1,6 +1,6 @@
 cmake_minimum_required( VERSION 3.26 )
 
-set(CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
     set(CMAKE_CUDA_STANDARD 11)
@@ -27,6 +27,7 @@ add_executable( cart_slam
     src/logging.cpp 
     src/modules/features.cpp 
     src/modules/optflow.cpp
+    src/modules/disparity.cpp
     src/utils/ui.cpp
 )
 

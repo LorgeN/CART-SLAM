@@ -1,19 +1,27 @@
 #include "cartslam.hpp"
 
 namespace cart {
-SystemRunData::~SystemRunData() {
-    for (auto data : this->data) {
-        free(data.second);  // Use free since these are void*
+log4cxx::LoggerPtr SystemRunData::getLogger() {
+    if (boost::shared_ptr<System> sys = this->system.lock()) {
+        return sys->logger;
     }
 
-    delete this->dataElement;
+    throw std::runtime_error("System has been destroyed");
+}
+
+boost::asio::thread_pool& SystemRunData::getThreadPool() {
+    if (boost::shared_ptr<System> sys = this->system.lock()) {
+        return sys->threadPool;
+    }
+
+    throw std::runtime_error("System has been destroyed");
 }
 
 void SystemRunData::insertData(MODULE_RETURN_VALUE_PAIR data) {
-    LOG4CXX_INFO(this->system->logger, "Inserting data with key " << std::quoted(data.first));
+    LOG4CXX_INFO(this->getLogger(), "Inserting data with key " << std::quoted(data.first));
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     this->data.insert(data);
-    LOG4CXX_DEBUG(this->system->logger, "Notifying all");
+    LOG4CXX_DEBUG(this->getLogger(), "Notifying all");
     this->dataCondition.notify_all();
 }
 
@@ -25,8 +33,16 @@ void SystemRunData::markAsComplete() {
     this->complete = true;
 }
 
-SystemRunData* SystemRunData::getRelativeRun(const int8_t offset) {
-    return this->system->getRunById(this->id + offset);
+boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offset) {
+    if (this->id + offset < 0) {
+        throw std::invalid_argument("Index out of range");
+    }
+
+    if (boost::shared_ptr<System> sys = this->system.lock()) {
+        return sys->getRunById(this->id + offset);
+    }
+
+    throw std::runtime_error("System has been destroyed");
 }
 
 boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
@@ -45,19 +61,11 @@ boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, 
     return future;
 }
 
-System::System(DataSource* source) : dataSource(source) {
+System::System(boost::shared_ptr<DataSource> source) : dataSource(source) {
     this->logger = getLogger("System");
 }
 
-System::~System() {
-    for (auto module : this->modules) {
-        delete module;
-    }
-
-    delete this->dataSource;
-}
-
-void System::addModule(SystemModule* module) {
+void System::addModule(boost::shared_ptr<SystemModule> module) {
     this->modules.push_back(module);
     LOG4CXX_INFO(this->logger, "Added module " << module->name);
 }
@@ -72,10 +80,10 @@ uint8_t System::getActiveRunCount() {
     return 0;
 }
 
-SystemRunData* System::startNewRun(cv::cuda::Stream& stream) {
+boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
     boost::unique_lock<boost::mutex> lock(this->runMutex);
     auto previousRunId = this->runId - 1;
-    auto data = new SystemRunData(this->runId++, this, this->dataSource->getNext(stream));
+    auto data = boost::make_shared<SystemRunData>(this->runId++, this->weak_from_this(), this->dataSource->getNext(stream));
     // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
     while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
         LOG4CXX_DEBUG(this->logger, "Waiting for a run to complete");
@@ -86,14 +94,13 @@ SystemRunData* System::startNewRun(cv::cuda::Stream& stream) {
 
     if (this->runs.size() > CARTSLAM_RUN_RETENTION) {
         LOG4CXX_DEBUG(this->logger, "Deleting old run with ID " << this->runs[0]->id);
-        delete this->runs[0];
         this->runs.erase(this->runs.begin());
     }
 
     return data;
 }
 
-SystemRunData* System::getRunById(const uint32_t id) {
+boost::shared_ptr<SystemRunData> System::getRunById(const uint32_t id) {
     if (id >= this->runId) {
         throw std::invalid_argument("Index out of range");
     }
@@ -122,7 +129,7 @@ boost::future<void> System::run() {
 
     // TODO: Sort the modules topologically for more efficient execution order
 
-    SystemRunData* runData = this->startNewRun(stream);
+    boost::shared_ptr<SystemRunData> runData = this->startNewRun(stream);
     LOG4CXX_DEBUG(this->logger, "Starting new run with id " << runData->id);
 
     std::vector<boost::future<void>> moduleFutures;
@@ -134,7 +141,7 @@ boost::future<void> System::run() {
         if (module->dependsOn.size() > 0) {
             // TODO: Test this
             LOG4CXX_DEBUG(this->logger, "Module " << std::quoted(module->name) << " has dependencies");
-            std::vector<boost::future<void*>> dependencies;
+            std::vector<boost::future<boost::shared_ptr<void>>> dependencies;
 
             for (auto dependency : module->dependsOn) {
                 LOG4CXX_DEBUG(this->logger, "Getting dependency " << std::quoted(dependency));

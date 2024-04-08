@@ -3,6 +3,7 @@
 #include "cartslam.hpp"
 #include "datasource.hpp"
 #include "logging.hpp"
+#include "modules/disparity.hpp"
 #include "modules/features.hpp"
 #include "modules/optflow.hpp"
 #include "opencv2/core/cuda.hpp"
@@ -21,9 +22,12 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    cart::System system(new cart::KITTIDataSource(argv[1], 0));
-    system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
-    system.addModule(new cart::ImageFeatureVisualizationModule());
+    auto dataSource = boost::make_shared<cart::KITTIDataSource>(argv[1], 0);
+    auto system = boost::make_shared<cart::System>(dataSource);
+    system->addModule(boost::make_shared<cart::ImageDisparityModule>());
+    system->addModule(boost::make_shared<cart::ImageDisparityVisualizationModule>());
+    // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
+    // system.addModule(new cart::ImageFeatureVisualizationModule());
     // system.addModule(new cart::ImageOpticalFlowModule());
     // system.addModule(new cart::ImageOpticalFlowVisualizationModule());
 
@@ -33,7 +37,7 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < 5000; i++) {
         CARTSLAM_START_TIMING(system);
-        last = system.run();
+        last = system->run();
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }

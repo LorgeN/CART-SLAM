@@ -19,12 +19,12 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
 }
 
 namespace cart {
-DataElement* DataSource::getNext(cv::cuda::Stream& stream) {
+boost::shared_ptr<DataElement> DataSource::getNext(cv::cuda::Stream& stream) {
     auto element = this->getNextInternal(stream);
 
     switch (element->type) {
         case STEREO: {
-            auto stereoElement = static_cast<StereoDataElement*>(element);
+            auto stereoElement = boost::static_pointer_cast<StereoDataElement>(element);
             processImage(stereoElement->left, stream);
             processImage(stereoElement->right, stream);
         } break;
@@ -49,13 +49,13 @@ DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-DataElement* KITTIDataSource::getNextInternal(cv::cuda::Stream& stream) {
+boost::shared_ptr<DataElement> KITTIDataSource::getNextInternal(cv::cuda::Stream& stream) {
     cv::Mat left = cv::imread(this->path + "/image_2/" + addLeadingZeros(this->currentFrame, 6) + ".png");
     cv::Mat right = cv::imread(this->path + "/image_3/" + addLeadingZeros(this->currentFrame, 6) + ".png");
 
     this->currentFrame++;
 
-    auto element = new StereoDataElement();
+    auto element = boost::make_shared<StereoDataElement>();
 
     element->left.upload(left, stream);
     element->right.upload(right, stream);
