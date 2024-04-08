@@ -6,6 +6,7 @@
 #include "modules/disparity.hpp"
 #include "modules/features.hpp"
 #include "modules/optflow.hpp"
+#include "modules/planeseg.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
@@ -24,10 +25,16 @@ int main(int argc, char* argv[]) {
 
     auto dataSource = boost::make_shared<cart::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
-    system->addModule(boost::make_shared<cart::ImageDisparityModule>());
-    system->addModule(boost::make_shared<cart::ImageDisparityVisualizationModule>());
+
+    system->addModule<cart::ImageDisparityModule>();
+    // system->addModule(boost::make_shared<cart::ImageDisparityVisualizationModule>());
+
+    system->addModule<cart::DisparityPlaneSegmentationModule>();
+    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
+
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
+
     // system.addModule(new cart::ImageOpticalFlowModule());
     // system.addModule(new cart::ImageOpticalFlowVisualizationModule());
 
@@ -35,7 +42,7 @@ int main(int argc, char* argv[]) {
 
     boost::future<void> last;
 
-    for (int i = 0; i < 5000; i++) {
+    for (int i = 0; i < 1000; i++) {
         CARTSLAM_START_TIMING(system);
         last = system->run();
         CARTSLAM_END_TIMING(system);

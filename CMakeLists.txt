@@ -1,6 +1,7 @@
 cmake_minimum_required( VERSION 3.26 )
 
 set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CUDA_STANDARD 17)
 
 if(NOT DEFINED CMAKE_CUDA_STANDARD)
     set(CMAKE_CUDA_STANDARD 11)
@@ -28,6 +29,7 @@ add_executable( cart_slam
     src/modules/features.cpp 
     src/modules/optflow.cpp
     src/modules/disparity.cpp
+    src/modules/planeseg.cu
     src/utils/ui.cpp
 )
 

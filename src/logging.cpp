@@ -1,17 +1,18 @@
 #include "logging.hpp"
 
 #include <log4cxx/basicconfigurator.h>
+#include <log4cxx/consoleappender.h>
 #include <log4cxx/fileappender.h>
 #include <log4cxx/helpers/pool.h>
 #include <log4cxx/logger.h>
-#include <log4cxx/simplelayout.h>
-
-#include "log4cxx/consoleappender.h"
+#include <log4cxx/patternlayout.h>
 
 namespace cart {
 void configureLogging(const std::string& logFile) {
-    log4cxx::FileAppender* fileAppender = new log4cxx::FileAppender(log4cxx::LayoutPtr(new log4cxx::SimpleLayout()), logFile, false);
-    log4cxx::ConsoleAppender* consoleAppender = new log4cxx::ConsoleAppender(log4cxx::LayoutPtr(new log4cxx::SimpleLayout()));
+    log4cxx::LayoutPtr layout(new log4cxx::PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %Y%-5p %c{1}%y - %m%n"));
+
+    log4cxx::FileAppender* fileAppender = new log4cxx::FileAppender(layout, logFile, false);
+    log4cxx::ConsoleAppender* consoleAppender = new log4cxx::ConsoleAppender(layout);
 
     log4cxx::helpers::Pool p;
     fileAppender->activateOptions(p);

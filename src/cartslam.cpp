@@ -46,6 +46,7 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
 }
 
 boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
+    LOG4CXX_DEBUG(this->logger, "Preparing wrapper task");
     boost::packaged_task<MODULE_RETURN_VALUE> task([this, &system, &data] {
         auto value = this->runInternal(system, data);
         LOG4CXX_DEBUG(this->logger, "Sync wrapper: Module " << this->name << " has finished");
@@ -57,6 +58,7 @@ boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, 
     });
 
     auto future = task.get_future();
+    LOG4CXX_DEBUG(this->logger, "Submitting wrapper task");
     boost::asio::post(system.threadPool, boost::move(task));
     return future;
 }
@@ -138,12 +140,12 @@ boost::future<void> System::run() {
         LOG4CXX_DEBUG(this->logger, "Running module " << std::quoted(module->name));
         boost::future<MODULE_RETURN_VALUE> future;
 
-        if (module->dependsOn.size() > 0) {
+        if (module->requiresData.size() > 0) {
             // TODO: Test this
             LOG4CXX_DEBUG(this->logger, "Module " << std::quoted(module->name) << " has dependencies");
             std::vector<boost::future<boost::shared_ptr<void>>> dependencies;
 
-            for (auto dependency : module->dependsOn) {
+            for (auto dependency : module->requiresData) {
                 LOG4CXX_DEBUG(this->logger, "Getting dependency " << std::quoted(dependency));
                 dependencies.push_back(runData->getDataAsync<void>(dependency));
             }

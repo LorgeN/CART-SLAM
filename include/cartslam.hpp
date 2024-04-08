@@ -69,14 +69,18 @@ class SystemModule {
    public:
     SystemModule(const std::string& name) : SystemModule(name, {}){};
 
-    SystemModule(const std::string& name, const std::vector<std::string> dependsOn) : name(name), dependsOn(dependsOn) {
+    SystemModule(const std::string& name, const std::vector<std::string> requiresData) : name(name), requiresData(requiresData) {
         this->logger = getLogger(name);
     }
 
     virtual ~SystemModule() = default;
     virtual boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) = 0;
 
-    const std::vector<std::string> dependsOn;
+    const std::vector<std::string> requiresData;
+    
+    // TODO: Add check for missing data dependencies
+    // const std::string providesData;
+
     const std::string name;
 
    protected:
@@ -87,7 +91,7 @@ class SyncWrapperSystemModule : public SystemModule {
    public:
     SyncWrapperSystemModule(const std::string& name) : SystemModule(name){};
 
-    SyncWrapperSystemModule(const std::string& name, const std::vector<std::string> dependsOn) : SystemModule(name, dependsOn){};
+    SyncWrapperSystemModule(const std::string& name, const std::vector<std::string> requiresData) : SystemModule(name, requiresData){};
 
     boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
     virtual MODULE_RETURN_VALUE runInternal(System& system, SystemRunData& data) = 0;
@@ -98,6 +102,12 @@ class System : public boost::enable_shared_from_this<System> {
     System(boost::shared_ptr<DataSource> dataSource);
     ~System() = default;
     boost::future<void> run();
+
+    template <typename T>
+    void addModule() {
+        this->addModule(boost::make_shared<T>());
+    }
+
     void addModule(boost::shared_ptr<SystemModule> module);
 
     boost::shared_ptr<SystemRunData> startNewRun(cv::cuda::Stream& stream);
