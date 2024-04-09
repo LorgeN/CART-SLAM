@@ -9,10 +9,11 @@
 
 namespace cart {
 void configureLogging(const std::string& logFile) {
-    log4cxx::LayoutPtr layout(new log4cxx::PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %Y%-5p %c{1}%y - %m%n"));
+    log4cxx::LayoutPtr consoleLayout(new log4cxx::PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %Y%-5p %c{1}%y - %m%n"));
+    log4cxx::LayoutPtr fileLayout(new log4cxx::PatternLayout("%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1} - %m%n"));
 
-    log4cxx::FileAppender* fileAppender = new log4cxx::FileAppender(layout, logFile, false);
-    log4cxx::ConsoleAppender* consoleAppender = new log4cxx::ConsoleAppender(layout);
+    log4cxx::FileAppender* fileAppender = new log4cxx::FileAppender(fileLayout, logFile, false);
+    log4cxx::ConsoleAppender* consoleAppender = new log4cxx::ConsoleAppender(consoleLayout);
 
     log4cxx::helpers::Pool p;
     fileAppender->activateOptions(p);
