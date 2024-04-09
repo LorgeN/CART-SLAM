@@ -36,12 +36,13 @@ class ImageOpticalFlowModule : public SyncWrapperSystemModule {
 
 class ImageOpticalFlowVisualizationModule : public SystemModule {
    public:
-    ImageOpticalFlowVisualizationModule() : SystemModule("ImageOpticalFlowVisualization", {CARTSLAM_KEY_OPTFLOW}), imageThread("Optical Flow"){};
-
+    ImageOpticalFlowVisualizationModule() : SystemModule("ImageOpticalFlowVisualization", {CARTSLAM_KEY_OPTFLOW}) {
+        this->imageThread = ImageProvider::create("Optical Flow");
+    };
     boost::future<MODULE_RETURN_VALUE> run(System &system, SystemRunData &data) override;
 
    private:
-    cart::ImageThread imageThread;
+    boost::shared_ptr<ImageProvider> imageThread;
 };
 
 class ImageOpticalFlowVisitor : public DataElementVisitor<void *> {

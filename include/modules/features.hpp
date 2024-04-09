@@ -41,12 +41,14 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
 
 class ImageFeatureVisualizationModule : public SystemModule {
    public:
-    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {CARTSLAM_KEY_FEATURES}), imageThread("Features"){};
+    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {CARTSLAM_KEY_FEATURES}) {
+        this->imageThread = ImageProvider::create("Features");
+    };
 
     boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
 
    private:
-    cart::ImageThread imageThread;
+    boost::shared_ptr<ImageProvider> imageThread;
 };
 
 class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {

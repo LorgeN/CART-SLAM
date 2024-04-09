@@ -13,13 +13,16 @@
 
 #define THREADS_PER_BLOCK_X 16
 #define THREADS_PER_BLOCK_Y 16
-#define X_BATCH 8
-#define Y_BATCH 8
-#define SHARED_SIZE ((X_BATCH * THREADS_PER_BLOCK_X) * (Y_BATCH * (LOW_PASS_FILTER_PADDING + THREADS_PER_BLOCK_Y)) * sizeof(uint8_t))
+#define X_BATCH 4
+#define Y_BATCH 4
+#define SHARED_SIZE ((X_BATCH * THREADS_PER_BLOCK_X) * (Y_BATCH * (LOW_PASS_FILTER_PADDING + THREADS_PER_BLOCK_Y)) * sizeof(disparity_t))
 
-__global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv::cuda::PtrStepSz<int16_t> output, int width, int height) {
-    __shared__ uint8_t sharedDisparity[SHARED_SIZE];
-    __shared__ uint8_t sharedSmoothed[SHARED_SIZE];
+typedef int16_t disparity_t;
+typedef int32_t derivative_t;
+
+__global__ void calculateDerivatives(cv::cuda::PtrStepSz<disparity_t> disparity, cv::cuda::PtrStepSz<derivative_t> output, int width, int height) {
+    __shared__ disparity_t sharedDisparity[SHARED_SIZE];
+    __shared__ disparity_t sharedSmoothed[SHARED_SIZE];
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -30,8 +33,8 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv:
     int pixelX = x * X_BATCH;
     int pixelY = y * Y_BATCH;
 
-    size_t inputRowStep = disparity.step / sizeof(uint8_t);
-    size_t outputRowStep = output.step / sizeof(int16_t);
+    size_t inputRowStep = disparity.step / sizeof(disparity_t);
+    size_t outputRowStep = output.step / sizeof(derivative_t);
     size_t sharedRowStep = X_BATCH * blockDim.x;
 
     for (int i = 0; i < Y_BATCH; i++) {
@@ -53,7 +56,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv:
                 }
 
                 // Pad with repeating value on boundaries
-                uint8_t value = disparity[INDEX(pixelX + j, max(0, pixelY - i), inputRowStep)];
+                disparity_t value = disparity[INDEX(pixelX + j, max(0, pixelY - i), inputRowStep)];
                 sharedDisparity[SHARED_INDEX(sharedPixelX + j, sharedPixelY - i, sharedRowStep)] = value;
                 // Trick to avoid having to share border values across thread blocks
                 // Note that these values will not be smoothed, but that should be OK
@@ -70,7 +73,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv:
                     break;
                 }
 
-                uint8_t value = disparity[INDEX(pixelX + j, min(height - 1, pixelY + Y_BATCH + i), inputRowStep)];
+                disparity_t value = disparity[INDEX(pixelX + j, min(height - 1, pixelY + Y_BATCH + i), inputRowStep)];
                 sharedDisparity[SHARED_INDEX(sharedPixelX + j, sharedPixelY + Y_BATCH + i, sharedRowStep)] = value;
                 // Same trick as above
                 sharedSmoothed[SHARED_INDEX(sharedPixelX + j, sharedPixelY + Y_BATCH + i, sharedRowStep)] = value;
@@ -83,7 +86,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv:
     // Perform vertical low pass filter
     for (int j = 0; j < X_BATCH; j++) {
         // Sliding window sum
-        uint16_t sum = 0;
+        derivative_t sum = 0;
 
 #pragma unroll
         for (int i = -LOW_PASS_FILTER_PADDING; i < LOW_PASS_FILTER_PADDING; i++) {
@@ -108,7 +111,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<uint8_t> disparity, cv:
                 continue;
             }
 
-            int16_t derivative =
+            derivative_t derivative =
                 sharedSmoothed[SHARED_INDEX(sharedPixelX + j, sharedPixelY + i + 1, sharedRowStep)] -
                 sharedSmoothed[SHARED_INDEX(sharedPixelX + j, sharedPixelY + i - 1, sharedRowStep)];
 
@@ -127,8 +130,9 @@ MODULE_RETURN_VALUE DisparityPlaneSegmentationModule::runInternal(System& system
         return MODULE_NO_RETURN_VALUE;
     }
 
-    if (disparity->type() != CV_8UC1) {
-        throw std::runtime_error("Disparity must be of type CV_8UC1");
+    if (disparity->type() != CV_16SC1) {
+        LOG4CXX_WARN(system.logger, "Disparity must be of type CV_16SC1, was " << disparity->type() << " (Depth: " << disparity->depth() << ", channels: " << disparity->channels() << ")");
+        throw std::runtime_error("Disparity must be of type CV_16SC1");
     }
 
     cv::cuda::GpuMat derivatives;
@@ -176,7 +180,7 @@ boost::future<MODULE_RETURN_VALUE> DisparityPlaneSegmentationVisualizationModule
 
             cv::calcHist(&image, 1, 0, cv::Mat(), hist, 1, &histSize, histRange, uniform, accumulate);
 
-            int hist_w = 512, hist_h = 400;
+            int hist_w = 1024, hist_h = 800;
             int bin_w = cvRound((double)hist_w / histSize);
 
             cv::Mat histImage(hist_h, hist_w, CV_8UC3, cv::Scalar(0, 0, 0));
@@ -189,8 +193,8 @@ boost::future<MODULE_RETURN_VALUE> DisparityPlaneSegmentationVisualizationModule
                          cv::Scalar(255, 0, 0), 2, 8, 0);
             }
 
-            this->histThread.setImageIfLater(histImage, data.id);
-            this->imageThread.setImageIfLater(image, data.id);
+            this->histThread->setImageIfLater(histImage, data.id);
+            this->imageThread->setImageIfLater(image, data.id);
         }
 
         promise->set_value(MODULE_NO_RETURN_VALUE);

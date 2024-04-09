@@ -14,25 +14,26 @@
 namespace cart {
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(int numDisparities = 64,
-                         int blockSize = 19) : SyncWrapperSystemModule("ImageDisparity") {
-        this->stereoBM = cv::cuda::createStereoBM(numDisparities, blockSize);
+    ImageDisparityModule(int minDisparity = 0, int numDisparities = 128) : SyncWrapperSystemModule("ImageDisparity") {
+        this->stereoBM = cv::cuda::createStereoSGM(minDisparity, numDisparities);
     };
 
     MODULE_RETURN_VALUE runInternal(System& system, SystemRunData& data) override;
 
    private:
-    cv::Ptr<cv::cuda::StereoBM> stereoBM;
+    cv::Ptr<cv::cuda::StereoSGM> stereoBM;
 };
 
 class ImageDisparityVisualizationModule : public SystemModule {
    public:
-    ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization", {CARTSLAM_KEY_DISPARITY}), imageThread("Disparity"){};
+    ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization", {CARTSLAM_KEY_DISPARITY}) {
+        this->imageThread = ImageProvider::create("Disparity");
+    };
 
     boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
 
    private:
-    cart::ImageThread imageThread;
+    boost::shared_ptr<ImageProvider> imageThread;
 };
 }  // namespace cart
 

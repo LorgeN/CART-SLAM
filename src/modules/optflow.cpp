@@ -161,7 +161,7 @@ boost::future<MODULE_RETURN_VALUE> ImageOpticalFlowVisualizationModule::run(Syst
         cv::vconcat(concatRes, flowConcat, concatRes);
 
         LOG4CXX_DEBUG(this->logger, "Displaying optical flow visualization");
-        this->imageThread.setImageIfLater(concatRes, data.id);
+        this->imageThread->setImageIfLater(concatRes, data.id);
         promise->set_value(MODULE_NO_RETURN_VALUE);
     });
 

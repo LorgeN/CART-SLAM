@@ -28,13 +28,16 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
 
 class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
    public:
-    DisparityPlaneSegmentationVisualizationModule() : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}), imageThread("Planes"), histThread("Plane Histogram"){};
-
+    DisparityPlaneSegmentationVisualizationModule() : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}) {
+        this->imageThread = ImageProvider::create("Plane Segmentation");
+        this->histThread = ImageProvider::create("Plane Segmentation Histogram");
+    };
+    
     boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
 
    private:
-    cart::ImageThread imageThread;
-    cart::ImageThread histThread;
+    boost::shared_ptr<ImageProvider> imageThread;
+    boost::shared_ptr<ImageProvider> histThread;
 };
 }  // namespace cart
 

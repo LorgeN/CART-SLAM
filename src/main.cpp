@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     auto system = boost::make_shared<cart::System>(dataSource);
 
     system->addModule<cart::ImageDisparityModule>();
-    // system->addModule(boost::make_shared<cart::ImageDisparityVisualizationModule>());
+    system->addModule<cart::ImageDisparityVisualizationModule>();
 
     system->addModule<cart::DisparityPlaneSegmentationModule>();
     system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
@@ -42,14 +42,14 @@ int main(int argc, char* argv[]) {
 
     boost::future<void> last;
 
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 3000; i++) {
         CARTSLAM_START_TIMING(system);
-        last = system->run();
+        system->run().wait();
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
-    last.wait();
+    //last.wait();
     CARTSLAM_END_AVERAGE_TIMING(system);
 
     /*

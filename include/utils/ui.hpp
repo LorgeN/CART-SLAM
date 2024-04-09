@@ -9,20 +9,40 @@
 #include "../logging.hpp"
 
 namespace cart {
+class ImageProvider;
+
 class ImageThread {
    public:
-    ImageThread(const std::string name) : name(name) {
-        this->logger = getLogger(name);
-    };
+    static ImageThread &getInstance() {
+        static ImageThread instance;
+        return instance;
+    }
 
     ~ImageThread() {
-        // Stop the thread only if it is still running
-        if (!this->thread.joinable()) {
-            return;
-        }
-
         this->thread.interrupt();
         this->thread.join();
+    }
+
+    void appendImageProvider(const boost::weak_ptr<ImageProvider> provider);
+
+   private:
+    ImageThread();
+
+    void run();
+
+    std::vector<boost::weak_ptr<ImageProvider>> providers;
+
+    log4cxx::LoggerPtr logger;
+    boost::mutex dataMutex;
+    boost::thread thread;
+};
+
+class ImageProvider : public boost::enable_shared_from_this<ImageProvider> {
+   public:
+    static boost::shared_ptr<ImageProvider> create(const std::string name) {
+        auto ptr = boost::shared_ptr<ImageProvider>(new ImageProvider(name));
+        ImageThread::getInstance().appendImageProvider(ptr->weak_from_this());
+        return ptr;
     }
 
     void setImage(const cv::Mat &image);
@@ -31,14 +51,14 @@ class ImageThread {
 
     const std::string name;
 
-   private:
-    void run();
+    friend class ImageThread;
 
-    log4cxx::LoggerPtr logger;
-    cv::Mat image;
+   private:
+    ImageProvider(const std::string name) : name(name){};
+
     uint32_t frameIndex = 0;
+    cv::Mat image;
     boost::mutex dataMutex;
-    boost::thread thread;
 };
 }  // namespace cart
 

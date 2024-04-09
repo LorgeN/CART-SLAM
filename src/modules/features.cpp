@@ -44,7 +44,7 @@ boost::future<MODULE_RETURN_VALUE> ImageFeatureVisualizationModule::run(System &
         cv::Mat concatRes;
         cv::hconcat(images[0], images[1], concatRes);
 
-        this->imageThread.setImageIfLater(concatRes, data.id);
+        this->imageThread->setImageIfLater(concatRes, data.id);
 
         promise->set_value(MODULE_NO_RETURN_VALUE);
     });

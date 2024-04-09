@@ -13,7 +13,7 @@ project( CART-SLAM LANGUAGES CUDA CXX )
 set(Boost_USE_STATIC_LIBS ON) 
 set(Boost_USE_MULTITHREADED ON)  
 set(Boost_USE_STATIC_RUNTIME OFF) 
-find_package(Boost REQUIRED COMPONENTS system thread) 
+find_package(Boost REQUIRED COMPONENTS system thread timer chrono ) 
 include_directories(${Boost_INCLUDE_DIRS}) 
 
 find_package( OpenCV REQUIRED )
@@ -40,7 +40,7 @@ endif()
 
 target_include_directories( cart_slam PRIVATE include )
 target_link_libraries( cart_slam ${OpenCV_LIBS} )
-target_link_libraries( cart_slam Boost::system Boost::thread )
+target_link_libraries( cart_slam Boost::system Boost::thread Boost::timer Boost::chrono )
 
 target_include_directories( cart_slam PRIVATE $<TARGET_PROPERTY:log4cxx,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries( cart_slam log4cxx)

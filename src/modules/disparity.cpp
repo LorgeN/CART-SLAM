@@ -38,13 +38,12 @@ boost::future<MODULE_RETURN_VALUE> ImageDisparityVisualizationModule::run(System
 
         stream.waitForCompletion();
 
-        disparityData.convertTo(disparityData, CV_16S, 16.0);
         cv::ximgproc::getDisparityVis(disparityData, disparityImage);
 
         cv::Mat concatRes;
         cv::vconcat(image, disparityImage, concatRes);
 
-        this->imageThread.setImageIfLater(concatRes, data.id);
+        this->imageThread->setImageIfLater(concatRes, data.id);
 
         promise->set_value(MODULE_NO_RETURN_VALUE);
     });
