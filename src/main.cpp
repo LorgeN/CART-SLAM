@@ -44,12 +44,12 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < 3000; i++) {
         CARTSLAM_START_TIMING(system);
-        system->run().wait();
+        last = system->run();
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
-    //last.wait();
+    last.wait();
     CARTSLAM_END_AVERAGE_TIMING(system);
 
     /*
