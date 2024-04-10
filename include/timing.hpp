@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_TIMING_HPP
-#define CARTSLAM_TIMING_HPP
+#pragma once
 
 #define CARTSLAM_END_TIMING(name) CARTSLAM_END_TIMING_TO(name, std::cout)
 
@@ -35,5 +34,3 @@
 #define CARTSLAM_END_AVERAGE_TIMING(name)
 
 #endif
-
-#endif  // CARTSLAM_TIMING_HPP

@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_FEATURES_HPP
-#define CARTSLAM_FEATURES_HPP
+#pragma once
 
 #include <log4cxx/logger.h>
 
@@ -62,5 +61,3 @@ class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {
     log4cxx::LoggerPtr logger;
 };
 }  // namespace cart
-
-#endif

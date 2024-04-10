@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_OPTFLOW_HPP
-#define CARTSLAM_OPTFLOW_HPP
+#pragma once
 
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudaoptflow.hpp>
@@ -57,5 +56,3 @@ class ImageOpticalFlowVisitor : public DataElementVisitor<void *> {
 };
 
 }  // namespace cart
-
-#endif  // CARTSLAM_OPTFLOW_HPP

@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_CUDA_HPP
-#define CARTSLAM_CUDA_HPP
+#pragma once
 
 #include <log4cxx/logger.h>
 
@@ -18,5 +17,3 @@ inline void gpuAssert(log4cxx::LoggerPtr logger, cudaError_t code, const char *f
     }
 }
 }  // namespace cart
-
-#endif  // CARTSLAM_CUDA_HPP

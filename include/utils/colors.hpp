@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_COLORS_HPP
-#define CARTSLAM_COLORS_HPP
+#pragma once
 
 #include "opencv2/opencv.hpp"
 
@@ -74,5 +73,3 @@ static cv::Vec3b computeColor(float fx, float fy) {
 }
 }  // namespace util
 }  // namespace cart
-
-#endif  // CARTSLAM_COLORS_HPP

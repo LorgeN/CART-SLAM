@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_DATASOURCE_HPP
-#define CARTSLAM_DATASOURCE_HPP
+#pragma once
 
 #include <boost/thread.hpp>
 #include <opencv2/opencv.hpp>
@@ -71,5 +70,3 @@ class KITTIDataSource : public DataSource {
 };
 
 }  // namespace cart
-
-#endif  // CARTSLAM_DATASOURCE_HPP

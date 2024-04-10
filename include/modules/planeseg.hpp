@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_PLANESEG_HPP
-#define CARTSLAM_PLANESEG_HPP
+#pragma once
 
 #include <log4cxx/logger.h>
 
@@ -40,5 +39,3 @@ class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
     boost::shared_ptr<ImageProvider> histThread;
 };
 }  // namespace cart
-
-#endif  // CARTSLAM_PLANESEG_HPP

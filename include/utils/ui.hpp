@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_UI_HPP
-#define CARTSLAM_UI_HPP
+#pragma once
 
 #include <log4cxx/logger.h>
 
@@ -61,5 +60,3 @@ class ImageProvider : public boost::enable_shared_from_this<ImageProvider> {
     boost::mutex dataMutex;
 };
 }  // namespace cart
-
-#endif  // CARTSLAM_UI_HPP

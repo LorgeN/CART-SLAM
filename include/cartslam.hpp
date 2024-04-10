@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_HPP
-#define CARTSLAM_HPP
+#pragma once
 
 #define BOOST_THREAD_VERSION 3
 #define BOOST_THREAD_PROVIDES_FUTURE
@@ -77,7 +76,7 @@ class SystemModule {
     virtual boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) = 0;
 
     const std::vector<std::string> requiresData;
-    
+
     // TODO: Add check for missing data dependencies
     // const std::string providesData;
 
@@ -155,5 +154,3 @@ boost::future<boost::shared_ptr<T>> SystemRunData::getDataAsync(const std::strin
     return future;
 }
 }  // namespace cart
-
-#endif  // CARTSLAM_HPP

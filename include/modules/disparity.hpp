@@ -1,5 +1,4 @@
-#ifndef CARTSLAM_DISPARITY_HPP
-#define CARTSLAM_DISPARITY_HPP
+#pragma once
 
 #include <log4cxx/logger.h>
 
@@ -36,5 +35,3 @@ class ImageDisparityVisualizationModule : public SystemModule {
     boost::shared_ptr<ImageProvider> imageThread;
 };
 }  // namespace cart
-
-#endif
