@@ -32,7 +32,7 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
    public:
     ImageFeatureDetectorModule(FeatureDetector detector) : SyncWrapperSystemModule("ImageFeatureDetector"), detector(detector){};
 
-    module_result_t runInternal(System& system, SystemRunData& data) override;
+    system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
     const FeatureDetector detector;
@@ -44,7 +44,7 @@ class ImageFeatureVisualizationModule : public SystemModule {
         this->imageThread = ImageProvider::create("Features");
     };
 
-    boost::future<module_result_t> run(System& system, SystemRunData& data) override;
+    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;

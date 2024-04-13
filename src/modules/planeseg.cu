@@ -109,7 +109,7 @@ cv::Mat makeHistogram(cv::cuda::GpuMat& derivatives, int histSize = 256) {
 }
 
 namespace cart {
-module_result_t DisparityPlaneSegmentationModule::runInternal(System& system, SystemRunData& data) {
+system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, SystemRunData& data) {
     LOG4CXX_DEBUG(this->logger, "Running disparity plane segmentation");
     auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
 
@@ -189,8 +189,8 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& d
     this->planeParametersUpdated = true;
 }
 
-boost::future<module_result_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
-    auto promise = boost::make_shared<boost::promise<module_result_t>>();
+boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
+    auto promise = boost::make_shared<boost::promise<system_data_t>>();
 
     boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto planes = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES);

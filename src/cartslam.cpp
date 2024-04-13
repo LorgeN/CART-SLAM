@@ -45,9 +45,9 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
     throw std::runtime_error("System has been destroyed");
 }
 
-boost::future<module_result_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
+boost::future<system_data_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
     LOG4CXX_DEBUG(this->logger, "Preparing wrapper task");
-    boost::packaged_task<module_result_t> task([this, &system, &data] {
+    boost::packaged_task<system_data_t> task([this, &system, &data] {
         auto value = this->runInternal(system, data);
         LOG4CXX_DEBUG(this->logger, "Sync wrapper: Module " << this->name << " has finished");
         if (value) {
@@ -139,7 +139,7 @@ boost::future<void> System::run() {
     for (auto module : this->modules) {
         auto moduleName = std::quoted(module->name);
         LOG4CXX_DEBUG(this->logger, "Running module " << moduleName);
-        boost::future<module_result_t> future;
+        boost::future<system_data_t> future;
 
         if (module->requiresData.size() > 0) {
             // TODO: Test this
@@ -165,8 +165,8 @@ boost::future<void> System::run() {
 
         LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has been submitted for execution");
 
-        moduleFutures.push_back(future.then([this, runData, moduleName](boost::future<module_result_t> future) {
-            module_result_t data;
+        moduleFutures.push_back(future.then([this, runData, moduleName](boost::future<system_data_t> future) {
+            system_data_t data;
 
             try {
                 data = future.get();

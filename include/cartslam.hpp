@@ -66,7 +66,7 @@ class SystemModule {
     }
 
     virtual ~SystemModule() = default;
-    virtual boost::future<module_result_t> run(System& system, SystemRunData& data) = 0;
+    virtual boost::future<system_data_t> run(System& system, SystemRunData& data) = 0;
 
     const std::vector<std::string> requiresData;
 
@@ -85,8 +85,8 @@ class SyncWrapperSystemModule : public SystemModule {
 
     SyncWrapperSystemModule(const std::string& name, const std::vector<std::string> requiresData) : SystemModule(name, requiresData){};
 
-    boost::future<module_result_t> run(System& system, SystemRunData& data) override;
-    virtual module_result_t runInternal(System& system, SystemRunData& data) = 0;
+    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
+    virtual system_data_t runInternal(System& system, SystemRunData& data) = 0;
 };
 
 class System : public boost::enable_shared_from_this<System>, public DataContainer {
@@ -109,6 +109,7 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     log4cxx::LoggerPtr getLogger() override;
     boost::asio::thread_pool& getThreadPool() override;
 
+    
    private:
     log4cxx::LoggerPtr logger;
     boost::asio::thread_pool threadPool = boost::asio::thread_pool(CARTSLAM_WORKER_THREADS);

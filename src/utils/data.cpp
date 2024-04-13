@@ -1,7 +1,7 @@
 #include "utils/data.hpp"
 
 namespace cart {
-void DataContainer::insertData(module_result_pair_t data) {
+void DataContainer::insertData(system_data_pair_t data) {
     LOG4CXX_INFO(this->getLogger(), "Inserting data with key " << std::quoted(data.first));
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     this->data.insert(data);

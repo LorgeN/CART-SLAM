@@ -6,7 +6,7 @@
 #include "modules/disparity/interpolation.cuh"
 
 namespace cart {
-module_result_t ImageDisparityModule::runInternal(System& system, SystemRunData& data) {
+system_data_t ImageDisparityModule::runInternal(System& system, SystemRunData& data) {
     LOG4CXX_DEBUG(this->logger, "Running ImageDisparityModule");
 
     if (data.dataElement->type != DataElementType::STEREO) {
@@ -39,8 +39,8 @@ module_result_t ImageDisparityModule::runInternal(System& system, SystemRunData&
     return MODULE_RETURN(CARTSLAM_KEY_DISPARITY, boost::make_shared<cv::cuda::GpuMat>(boost::move(disparity)));
 }
 
-boost::future<module_result_t> ImageDisparityVisualizationModule::run(System& system, SystemRunData& data) {
-    auto promise = boost::make_shared<boost::promise<module_result_t>>();
+boost::future<system_data_t> ImageDisparityVisualizationModule::run(System& system, SystemRunData& data) {
+    auto promise = boost::make_shared<boost::promise<system_data_t>>();
 
     boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);

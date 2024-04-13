@@ -8,8 +8,8 @@
 #include <boost/thread/future.hpp>
 
 namespace cart {
-typedef std::pair<std::string, boost::shared_ptr<void>> module_result_pair_t;
-typedef std::optional<module_result_pair_t> module_result_t;
+typedef std::pair<std::string, boost::shared_ptr<void>> system_data_pair_t;
+typedef std::optional<system_data_pair_t> system_data_t;
 
 class DataContainer {
    public:
@@ -75,7 +75,7 @@ class DataContainer {
     }
 
    protected:
-    void insertData(module_result_pair_t data);
+    void insertData(system_data_pair_t data);
 
    private:
     std::map<std::string, boost::shared_ptr<void>> data;

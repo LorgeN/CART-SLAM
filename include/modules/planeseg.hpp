@@ -26,7 +26,7 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
     DisparityPlaneSegmentationModule(const int updateInterval = 1000) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}), updateInterval(updateInterval){};
 
-    module_result_t runInternal(System& system, SystemRunData& data) override;
+    system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
     void updatePlaneParameters(cv::cuda::GpuMat& derivates, SystemRunData& data);
@@ -48,7 +48,7 @@ class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
         this->histThread = ImageProvider::create("Plane Segmentation Histogram");
     };
 
-    boost::future<module_result_t> run(System& system, SystemRunData& data) override;
+    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;

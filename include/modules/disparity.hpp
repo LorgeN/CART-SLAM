@@ -26,7 +26,7 @@ class ImageDisparityModule : public SyncWrapperSystemModule {
         this->stereoSGM->setSpeckleRange(16);
     };
 
-    module_result_t runInternal(System& system, SystemRunData& data) override;
+    system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
     cv::Ptr<cv::cuda::StereoSGM> stereoSGM;
@@ -40,7 +40,7 @@ class ImageDisparityVisualizationModule : public SystemModule {
         this->imageThread = ImageProvider::create("Disparity");
     };
 
-    boost::future<module_result_t> run(System& system, SystemRunData& data) override;
+    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;
