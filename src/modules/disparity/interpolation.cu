@@ -36,7 +36,7 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
         for (int j = 0; j < X_BATCH; j++) {
             for (int i = 0; i < Y_BATCH; i++) {
                 cart::disparity_t current = shared[LOCAL_INDEX(j, i)];
-                if (current > 0) {
+                if (current > 0 && current < 16 * 256) {
                     continue;
                 }
 
@@ -47,7 +47,7 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
                     for (int l = -radius + 1; l < radius; l++) {
                         cart::disparity_t value = shared[LOCAL_INDEX(j + k, i + l)];
 
-                        if (value > 0) {
+                        if (value > 0 && value < 16 * 256) {
                             sum += value;
                             count++;
                         }

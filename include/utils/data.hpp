@@ -7,6 +7,8 @@
 #include <boost/thread.hpp>
 #include <boost/thread/future.hpp>
 
+#define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 20
+
 namespace cart {
 typedef std::pair<std::string, boost::shared_ptr<void>> system_data_pair_t;
 typedef std::optional<system_data_pair_t> system_data_t;
@@ -51,28 +53,7 @@ class DataContainer {
         return future;
     }
 
-    boost::future<void> waitForData(const std::vector<std::string> keys) {
-        boost::packaged_task<void> task([this, keys] {
-            boost::unique_lock<boost::mutex> lock(this->dataMutex);
-            for (const auto& key : keys) {
-                LOG4CXX_DEBUG(this->getLogger(), "Waiting for key " << key << " to be available");
-
-                while (!this->data.count(key)) {
-                    // If we ever have to wait more than 3 seconds for new data to be inserted, the run
-                    // is most likely over and something has failed somewhere
-                    const boost::system_time timeout = boost::get_system_time() + boost::posix_time::seconds(3);
-
-                    if (!this->dataCondition.timed_wait(lock, timeout)) {
-                        throw std::runtime_error("Timeout waiting for data key \"" + key + "\"");
-                    }
-                }
-            }
-        });
-
-        auto future = task.get_future();
-        boost::asio::post(this->getThreadPool(), boost::move(task));
-        return future;
-    }
+    boost::future<void> waitForData(const std::vector<std::string> keys);
 
    protected:
     void insertData(system_data_pair_t data);

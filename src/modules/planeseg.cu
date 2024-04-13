@@ -92,22 +92,6 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     }
 }
 
-cv::Mat makeHistogram(cv::cuda::GpuMat& derivatives, int histSize = 256) {
-    cv::Mat hostDerivatives;
-    derivatives.download(hostDerivatives);
-
-    hostDerivatives.convertTo(hostDerivatives, CV_8UC1, 1.0, 127);
-
-    float range[] = {0, 256};  // the upper boundary is exclusive
-    const float* histRange[] = {range};
-
-    cv::Mat hist;
-
-    cv::calcHist(&hostDerivatives, 1, 0, cv::Mat(), hist, 1, &histSize, histRange, true, false);
-
-    return hist;
-}
-
 namespace cart {
 system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, SystemRunData& data) {
     LOG4CXX_DEBUG(this->logger, "Running disparity plane segmentation");
@@ -140,12 +124,13 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
     CUDA_SAFE_CALL(this->logger, cudaDeviceSynchronize());
     LOG4CXX_DEBUG(this->logger, "Derivatives calculated");
 
-    this->updatePlaneParameters(derivatives, data);
+    this->updatePlaneParameters(derivatives, system, data);
 
     return MODULE_RETURN(CARTSLAM_KEY_PLANES, boost::make_shared<cv::cuda::GpuMat>(boost::move(derivatives)));
 }
 
-void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& derivatives, SystemRunData& data) {
+void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& derivatives, System& system, SystemRunData& data) {
+    // TODO: Inspiration for alternative: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7926705&tag=1
     if (this->lastUpdatedFrame > 0 && data.id - this->lastUpdatedFrame < this->updateInterval) {
         return;
     }
@@ -161,9 +146,6 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& d
     cv::Ptr<cv::ml::EM> em = cv::ml::EM::create();
     em->setClustersNumber(2);
 
-    cv::TermCriteria criteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, 0.1);
-    em->setTermCriteria(criteria);
-
     CARTSLAM_START_TIMING(em_train);
     em->trainEM(hostDerivatives);
     CARTSLAM_END_TIMING(em_train);
@@ -173,6 +155,7 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& d
 
     LOG4CXX_DEBUG(this->logger, "Raw means: " << em->getMeans());
     LOG4CXX_DEBUG(this->logger, "Raw covs: " << covs[0].at<double>(0, 0) << ", " << covs[1].at<double>(0, 0));
+    LOG4CXX_DEBUG(this->logger, "Raw weights: " << em->getWeights());
 
     this->verticalCenter = ROUND_TO_INT(em->getMeans().at<double>(0, 0));
     this->horizontalCenter = ROUND_TO_INT(em->getMeans().at<double>(1, 0));
@@ -187,6 +170,8 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& d
     LOG4CXX_DEBUG(this->logger, "Horizontal variance: " << this->horizontalVariance << ", vertical variance: " << this->verticalVariance);
 
     this->planeParametersUpdated = true;
+
+    system.insertGlobalData(CARTSLAM_KEY_PLANE_PARAMETERS, boost::make_shared<PlaneParameters>(this->horizontalCenter, this->verticalCenter, this->horizontalVariance, this->verticalVariance));
 }
 
 boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
@@ -204,7 +189,12 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
 
             int histSize = 256;
 
-            cv::Mat hist = makeHistogram(*planes, histSize);
+            float range[] = {0, 256};  // the upper boundary is exclusive
+            const float* histRange[] = {range};
+
+            cv::Mat hist;
+
+            cv::calcHist(&image, 1, 0, cv::Mat(), hist, 1, &histSize, histRange, true, false);
 
             int hist_w = 1024, hist_h = 800;
             int bin_w = cvRound((double)hist_w / histSize);
@@ -217,6 +207,14 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
                 cv::line(histImage, cv::Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
                          cv::Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
                          cv::Scalar(255, 0, 0), 2, 8, 0);
+            }
+
+            if (system.hasData(CARTSLAM_KEY_PLANE_PARAMETERS)) {
+                LOG4CXX_DEBUG(this->logger, "Drawing plane parameters");
+                auto parameters = system.getData<PlaneParameters>(CARTSLAM_KEY_PLANE_PARAMETERS);
+
+                cv::circle(histImage, cv::Point((parameters->horizontalCenter + 127) * bin_w, hist_h - 5), 5, cv::Scalar(0, 255, 0), -1);
+                cv::circle(histImage, cv::Point((parameters->verticalCenter + 127) * bin_w, hist_h - 5), 5, cv::Scalar(255, 0, 0), -1);
             }
 
             this->histThread->setImageIfLater(histImage, data.id);

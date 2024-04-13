@@ -10,12 +10,21 @@
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_PLANES "planes"
-#define CARTSLAM_KEY_PLANE_CENTER_HORIZONTAL "plane_center_horizontal"
-#define CARTSLAM_KEY_PLANE_CENTER_VERTICAL "plane_center_vertical"
-#define CARTSLAM_KEY_PLANE_VARIANCE_HORIZONTAL "plane_variance_horizontal"
-#define CARTSLAM_KEY_PLANE_VARIANCE_VERTICAL "plane_variance_vertical"
+#define CARTSLAM_KEY_PLANE_PARAMETERS "plane_parameters"
 
 namespace cart {
+struct PlaneParameters {
+    PlaneParameters() : horizontalCenter(0), horizontalVariance(0), verticalCenter(0), verticalVariance(0){};
+
+    PlaneParameters(int horizontalCenter, int horizontalVariance, int verticalCenter, int verticalVariance)
+        : horizontalCenter(horizontalCenter), horizontalVariance(horizontalVariance), verticalCenter(verticalCenter), verticalVariance(verticalVariance){};
+
+    const int horizontalCenter;
+    const int horizontalVariance;
+    const int verticalCenter;
+    const int verticalVariance;
+};
+
 enum Plane {
     HORIZONTAL = 0,
     VERTICAL = 1,
@@ -29,7 +38,7 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
-    void updatePlaneParameters(cv::cuda::GpuMat& derivates, SystemRunData& data);
+    void updatePlaneParameters(cv::cuda::GpuMat& derivates, System& system, SystemRunData& data);
 
     const int updateInterval;
 

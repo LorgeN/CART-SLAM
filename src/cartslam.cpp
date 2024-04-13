@@ -25,6 +25,14 @@ boost::asio::thread_pool& System::getThreadPool() {
     return this->threadPool;
 }
 
+void System::insertGlobalData(const std::string key, boost::shared_ptr<void> data) {
+    this->insertData(std::make_pair(key, data));
+}
+
+void System::insertGlobalData(system_data_pair_t data) {
+    this->insertData(data);
+}
+
 bool SystemRunData::isComplete() {
     return this->complete;
 }

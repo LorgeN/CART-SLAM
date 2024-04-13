@@ -109,7 +109,9 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     log4cxx::LoggerPtr getLogger() override;
     boost::asio::thread_pool& getThreadPool() override;
 
-    
+    void insertGlobalData(const std::string key, boost::shared_ptr<void> data);
+    void insertGlobalData(system_data_pair_t data);
+
    private:
     log4cxx::LoggerPtr logger;
     boost::asio::thread_pool threadPool = boost::asio::thread_pool(CARTSLAM_WORKER_THREADS);
