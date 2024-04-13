@@ -114,12 +114,12 @@ module_result_t DisparityPlaneSegmentationModule::runInternal(System& system, Sy
     auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
 
     if (disparity->empty()) {
-        LOG4CXX_WARN(system.logger, "Disparity is empty");
+        LOG4CXX_WARN(this->logger, "Disparity is empty");
         return MODULE_NO_RETURN_VALUE;
     }
 
     if (disparity->type() != CV_16SC1) {
-        LOG4CXX_WARN(system.logger, "Disparity must be of type CV_16SC1, was " << disparity->type() << " (Depth: " << disparity->depth() << ", channels: " << disparity->channels() << ")");
+        LOG4CXX_WARN(this->logger, "Disparity must be of type CV_16SC1, was " << disparity->type() << " (Depth: " << disparity->depth() << ", channels: " << disparity->channels() << ")");
         throw std::runtime_error("Disparity must be of type CV_16SC1");
     }
 
@@ -192,7 +192,7 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(cv::cuda::GpuMat& d
 boost::future<module_result_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
     auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
-    boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
+    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto planes = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES);
 
         if (!planes->empty()) {

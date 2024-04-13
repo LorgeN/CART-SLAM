@@ -30,12 +30,19 @@ add_executable( cart_slam
     src/modules/planeseg.cu
     src/modules/disparity/interpolation.cu
     src/utils/ui.cpp
+    src/utils/data.cpp
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
 endif()
+
+target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_VERSION=3 )
+target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_PROVIDES_FUTURE )
+target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_PROVIDES_FUTURE_CONTINUATION )
+target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_PROVIDES_FUTURE_WHEN_ALL_WHEN_ANY )
+target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_PROVIDES_FUTURE_UNWRAP )
 
 target_include_directories( cart_slam PRIVATE include )
 target_link_libraries( cart_slam PUBLIC ${OpenCV_LIBS} )

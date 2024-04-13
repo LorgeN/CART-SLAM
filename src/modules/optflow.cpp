@@ -115,7 +115,7 @@ void *ImageOpticalFlowVisitor::visitStereo(boost::shared_ptr<StereoDataElement> 
 boost::future<module_result_t> ImageOpticalFlowVisualizationModule::run(System &system, SystemRunData &data) {
     auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
-    boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
+    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         if (data.id == 0) {  // First run, no previous data
             promise->set_value(MODULE_NO_RETURN_VALUE);
             LOG4CXX_DEBUG(this->logger, "No previous data, skipping optical flow visualization");

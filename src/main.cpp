@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 
     last.wait();
 
-    system->threadPool.join();
+    system->getThreadPool().join();
 
     CARTSLAM_END_AVERAGE_TIMING(system);
     return 0;

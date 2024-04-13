@@ -24,7 +24,7 @@ void *ImageFeatureDetectorVisitor::visitStereo(boost::shared_ptr<StereoDataEleme
 boost::future<module_result_t> ImageFeatureVisualizationModule::run(System &system, SystemRunData &data) {
     auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
-    boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
+    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>(CARTSLAM_KEY_FEATURES);
 
         cv::cuda::Stream stream;

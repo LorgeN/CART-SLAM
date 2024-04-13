@@ -42,7 +42,7 @@ module_result_t ImageDisparityModule::runInternal(System& system, SystemRunData&
 boost::future<module_result_t> ImageDisparityVisualizationModule::run(System& system, SystemRunData& data) {
     auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
-    boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
+    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
 
         cv::cuda::Stream stream;

@@ -3,7 +3,7 @@
 namespace cart {
 log4cxx::LoggerPtr SystemRunData::getLogger() {
     if (boost::shared_ptr<System> sys = this->system.lock()) {
-        return sys->logger;
+        return sys->getLogger();
     }
 
     throw std::runtime_error("System has been destroyed");
@@ -11,18 +11,18 @@ log4cxx::LoggerPtr SystemRunData::getLogger() {
 
 boost::asio::thread_pool& SystemRunData::getThreadPool() {
     if (boost::shared_ptr<System> sys = this->system.lock()) {
-        return sys->threadPool;
+        return sys->getThreadPool();
     }
 
     throw std::runtime_error("System has been destroyed");
 }
 
-void SystemRunData::insertData(module_result_pair_t data) {
-    LOG4CXX_INFO(this->getLogger(), "Inserting data with key " << std::quoted(data.first));
-    boost::lock_guard<boost::mutex> lock(this->dataMutex);
-    this->data.insert(data);
-    LOG4CXX_DEBUG(this->getLogger(), "Notifying all");
-    this->dataCondition.notify_all();
+log4cxx::LoggerPtr System::getLogger() {
+    return this->logger;
+}
+
+boost::asio::thread_pool& System::getThreadPool() {
+    return this->threadPool;
 }
 
 bool SystemRunData::isComplete() {
@@ -59,12 +59,12 @@ boost::future<module_result_t> SyncWrapperSystemModule::run(System& system, Syst
 
     auto future = task.get_future();
     LOG4CXX_DEBUG(this->logger, "Submitting wrapper task");
-    boost::asio::post(system.threadPool, boost::move(task));
+    boost::asio::post(system.getThreadPool(), boost::move(task));
     return future;
 }
 
 System::System(boost::shared_ptr<DataSource> source) : dataSource(source) {
-    this->logger = getLogger("System");
+    this->logger = cart::getLogger("System");
 }
 
 void System::addModule(boost::shared_ptr<SystemModule> module) {
