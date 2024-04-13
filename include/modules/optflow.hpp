@@ -30,7 +30,7 @@ class ImageOpticalFlowModule : public SyncWrapperSystemModule {
    public:
     ImageOpticalFlowModule() : SyncWrapperSystemModule("ImageOpticalFlow"){};
 
-    MODULE_RETURN_VALUE runInternal(System &system, SystemRunData &data) override;
+    module_result_t runInternal(System &system, SystemRunData &data) override;
 };
 
 class ImageOpticalFlowVisualizationModule : public SystemModule {
@@ -38,7 +38,7 @@ class ImageOpticalFlowVisualizationModule : public SystemModule {
     ImageOpticalFlowVisualizationModule() : SystemModule("ImageOpticalFlowVisualization", {CARTSLAM_KEY_OPTFLOW}) {
         this->imageThread = ImageProvider::create("Optical Flow");
     };
-    boost::future<MODULE_RETURN_VALUE> run(System &system, SystemRunData &data) override;
+    boost::future<module_result_t> run(System &system, SystemRunData &data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;

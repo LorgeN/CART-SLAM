@@ -17,7 +17,7 @@ boost::asio::thread_pool& SystemRunData::getThreadPool() {
     throw std::runtime_error("System has been destroyed");
 }
 
-void SystemRunData::insertData(MODULE_RETURN_VALUE_PAIR data) {
+void SystemRunData::insertData(module_result_pair_t data) {
     LOG4CXX_INFO(this->getLogger(), "Inserting data with key " << std::quoted(data.first));
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     this->data.insert(data);
@@ -45,9 +45,9 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
     throw std::runtime_error("System has been destroyed");
 }
 
-boost::future<MODULE_RETURN_VALUE> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
+boost::future<module_result_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
     LOG4CXX_DEBUG(this->logger, "Preparing wrapper task");
-    boost::packaged_task<MODULE_RETURN_VALUE> task([this, &system, &data] {
+    boost::packaged_task<module_result_t> task([this, &system, &data] {
         auto value = this->runInternal(system, data);
         LOG4CXX_DEBUG(this->logger, "Sync wrapper: Module " << this->name << " has finished");
         if (value) {
@@ -84,8 +84,8 @@ uint8_t System::getActiveRunCount() {
 
 boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
     boost::unique_lock<boost::mutex> lock(this->runMutex);
-    auto previousRunId = this->runId - 1;
-    auto data = boost::make_shared<SystemRunData>(this->runId++, this->weak_from_this(), this->dataSource->getNext(stream));
+    auto previousRunId = this->runId;
+    auto data = boost::make_shared<SystemRunData>(++this->runId, this->weak_from_this(), this->dataSource->getNext(stream));
     // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
     while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
         LOG4CXX_DEBUG(this->logger, "Waiting for a run to complete");
@@ -137,35 +137,45 @@ boost::future<void> System::run() {
     std::vector<boost::future<void>> moduleFutures;
 
     for (auto module : this->modules) {
-        LOG4CXX_DEBUG(this->logger, "Running module " << std::quoted(module->name));
-        boost::future<MODULE_RETURN_VALUE> future;
+        auto moduleName = std::quoted(module->name);
+        LOG4CXX_DEBUG(this->logger, "Running module " << moduleName);
+        boost::future<module_result_t> future;
 
         if (module->requiresData.size() > 0) {
             // TODO: Test this
-            LOG4CXX_DEBUG(this->logger, "Module " << std::quoted(module->name) << " has dependencies");
-            std::vector<boost::future<boost::shared_ptr<void>>> dependencies;
+            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has dependencies");
 
-            for (auto dependency : module->requiresData) {
-                LOG4CXX_DEBUG(this->logger, "Getting dependency " << std::quoted(dependency));
-                dependencies.push_back(runData->getDataAsync<void>(dependency));
-            }
+            future = runData->waitForData(module->requiresData)
+                         .then([this, runData, module, moduleName](boost::future<void> future) {
+                             try {
+                                 future.wait();
+                             } catch (const std::exception& e) {
+                                 LOG4CXX_ERROR(this->logger, "Error waiting for data: " << e.what());
+                                 throw;
+                             }
 
-            future = boost::when_all(dependencies.begin(), dependencies.end())
-                         .then([this, runData, module](auto) {
-                             LOG4CXX_DEBUG(this->logger, "All dependencies have been resolved for module " << std::quoted(module->name));
+                             LOG4CXX_DEBUG(this->logger, "All dependencies have been resolved for module " << moduleName);
                              return module->run(*this, *runData);
                          })
                          .unwrap();
         } else {
-            LOG4CXX_DEBUG(this->logger, "Module " << std::quoted(module->name) << " has no dependencies");
+            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has no dependencies");
             future = module->run(*this, *runData);
         }
 
-        LOG4CXX_DEBUG(this->logger, "Module " << std::quoted(module->name) << " has been submitted for execution");
+        LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has been submitted for execution");
 
-        moduleFutures.push_back(future.then([this, runData](boost::future<MODULE_RETURN_VALUE> future) {
-            auto data = future.get();
-            LOG4CXX_DEBUG(this->logger, "Got result from module");
+        moduleFutures.push_back(future.then([this, runData, moduleName](boost::future<module_result_t> future) {
+            module_result_t data;
+
+            try {
+                data = future.get();
+            } catch (const std::exception& e) {
+                LOG4CXX_ERROR(this->logger, "Error running module " << moduleName << ": " << e.what());
+                throw;
+            }
+
+            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has completed");
 
             if (data) {
                 LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data->first) << ". Inserting into run data.");
@@ -176,7 +186,14 @@ boost::future<void> System::run() {
 
     LOG4CXX_DEBUG(this->logger, "All modules have been submitted for execution");
     log4cxx::LoggerPtr logger = this->logger;
-    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto) {
+    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto future) {
+        try {
+            future.wait();
+        } catch (const std::exception& e) {
+            LOG4CXX_ERROR(logger, "Run with ID " << runData->id << " has failed: " << e.what());
+            throw;
+        }
+
         runData->markAsComplete();
         LOG4CXX_DEBUG(logger, "Run with ID " << runData->id << " has completed");
 

@@ -87,9 +87,9 @@ cv::Mat drawOpticalFlow(const ImageOpticalFlow &imageFlow, cv::Ptr<cv::cuda::Nvi
     return flowImage;
 }
 
-MODULE_RETURN_VALUE ImageOpticalFlowModule::runInternal(System &system, SystemRunData &data) {
+module_result_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData &data) {
     if (data.id == 0) {  // First run, no previous data
-        return MODULE_RETURN_VALUE_PAIR(CARTSLAM_KEY_OPTFLOW, NULL);
+        return module_result_pair_t(CARTSLAM_KEY_OPTFLOW, NULL);
     }
 
     cv::cuda::Stream stream;
@@ -112,8 +112,8 @@ void *ImageOpticalFlowVisitor::visitStereo(boost::shared_ptr<StereoDataElement> 
     return new std::pair<ImageOpticalFlow, ImageOpticalFlow>(flowLeft, flowRight);
 }
 
-boost::future<MODULE_RETURN_VALUE> ImageOpticalFlowVisualizationModule::run(System &system, SystemRunData &data) {
-    auto promise = boost::make_shared<boost::promise<MODULE_RETURN_VALUE>>();
+boost::future<module_result_t> ImageOpticalFlowVisualizationModule::run(System &system, SystemRunData &data) {
+    auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
     boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
         if (data.id == 0) {  // First run, no previous data

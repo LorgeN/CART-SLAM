@@ -1,7 +1,7 @@
 #include "datasource.hpp"
 
-#include "opencv2/cudaimgproc.hpp"
-#include "opencv2/cudawarping.hpp"
+#include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudawarping.hpp>
 
 std::string addLeadingZeros(int number, std::size_t length) {
     std::string numberAsString = std::to_string(number);
@@ -13,9 +13,15 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
         cv::cuda::resize(image, image, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
     }
 
+#ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     if (image.type() != CV_8UC1) {
         cv::cuda::cvtColor(image, image, cv::COLOR_BGR2GRAY, 0, stream);
     }
+#else
+    if (image.type() != CV_8UC3) {
+        cv::cuda::cvtColor(image, image, cv::COLOR_GRAY2BGR, 0, stream);
+    }
+#endif
 }
 
 namespace cart {

@@ -10,17 +10,28 @@
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
 
+#define SGM_P1(blockSize) (2 * blockSize * blockSize)
+#define SGM_P2(blockSize) (8 * blockSize * blockSize)
+
 namespace cart {
+typedef int16_t disparity_t;
+
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(int minDisparity = 0, int numDisparities = 128) : SyncWrapperSystemModule("ImageDisparity") {
-        this->stereoBM = cv::cuda::createStereoSGM(minDisparity, numDisparities);
+    ImageDisparityModule(int minDisparity = 1, int numDisparities = 255, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
+        : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations) {
+        this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities, SGM_P1(blockSize), SGM_P2(blockSize), 5);
+        this->stereoSGM->setBlockSize(blockSize);
+        this->stereoSGM->setSpeckleWindowSize(100);
+        this->stereoSGM->setSpeckleRange(16);
     };
 
-    MODULE_RETURN_VALUE runInternal(System& system, SystemRunData& data) override;
+    module_result_t runInternal(System& system, SystemRunData& data) override;
 
    private:
-    cv::Ptr<cv::cuda::StereoSGM> stereoBM;
+    cv::Ptr<cv::cuda::StereoSGM> stereoSGM;
+    int smoothingRadius;
+    int smoothingIterations;
 };
 
 class ImageDisparityVisualizationModule : public SystemModule {
@@ -29,7 +40,7 @@ class ImageDisparityVisualizationModule : public SystemModule {
         this->imageThread = ImageProvider::create("Disparity");
     };
 
-    boost::future<MODULE_RETURN_VALUE> run(System& system, SystemRunData& data) override;
+    boost::future<module_result_t> run(System& system, SystemRunData& data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;

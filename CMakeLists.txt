@@ -13,13 +13,11 @@ project( CART-SLAM LANGUAGES CUDA CXX )
 set(Boost_USE_STATIC_LIBS ON) 
 set(Boost_USE_MULTITHREADED ON)  
 set(Boost_USE_STATIC_RUNTIME OFF) 
-find_package(Boost REQUIRED COMPONENTS system thread timer chrono ) 
-include_directories(${Boost_INCLUDE_DIRS}) 
 
+find_package( Boost REQUIRED COMPONENTS system thread timer chrono ) 
 find_package( OpenCV REQUIRED )
-include_directories (${OpenCV_INCLUDE_DIRS} )
-
-find_package(log4cxx 1.1)
+find_package( log4cxx 1.1 )
+find_package( OpenMP )
 
 add_executable( cart_slam 
     src/main.cpp 
@@ -30,6 +28,7 @@ add_executable( cart_slam
     src/modules/optflow.cpp
     src/modules/disparity.cpp
     src/modules/planeseg.cu
+    src/modules/disparity/interpolation.cu
     src/utils/ui.cpp
 )
 
@@ -39,8 +38,12 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 target_include_directories( cart_slam PRIVATE include )
-target_link_libraries( cart_slam ${OpenCV_LIBS} )
-target_link_libraries( cart_slam Boost::system Boost::thread Boost::timer Boost::chrono )
+target_link_libraries( cart_slam PUBLIC ${OpenCV_LIBS} )
+target_link_libraries( cart_slam PUBLIC Boost::system Boost::thread Boost::timer Boost::chrono )
+target_link_libraries( cart_slam PUBLIC log4cxx)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries( cart_slam PUBLIC OpenMP::OpenMP_CXX )
+endif()
 
 target_include_directories( cart_slam PRIVATE $<TARGET_PROPERTY:log4cxx,INTERFACE_INCLUDE_DIRECTORIES>)
-target_link_libraries( cart_slam log4cxx)

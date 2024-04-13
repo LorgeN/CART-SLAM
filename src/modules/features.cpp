@@ -5,7 +5,7 @@
 const cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(CARTSLAM_OPTION_KEYPOINTS);
 
 namespace cart {
-MODULE_RETURN_VALUE ImageFeatureDetectorModule::runInternal(System &system, SystemRunData &data) {
+module_result_t ImageFeatureDetectorModule::runInternal(System &system, SystemRunData &data) {
     LOG4CXX_DEBUG(this->logger, "Running ImageFeatureDetectorModule");
     cv::cuda::Stream stream;
     ImageFeatureDetectorVisitor visitor(this->detector, stream, this->logger);
@@ -21,8 +21,8 @@ void *ImageFeatureDetectorVisitor::visitStereo(boost::shared_ptr<StereoDataEleme
     return new std::pair<ImageFeatures, ImageFeatures>(leftFeatures, rightFeatures);
 }
 
-boost::future<MODULE_RETURN_VALUE> ImageFeatureVisualizationModule::run(System &system, SystemRunData &data) {
-    auto promise = boost::make_shared<boost::promise<MODULE_RETURN_VALUE>>();
+boost::future<module_result_t> ImageFeatureVisualizationModule::run(System &system, SystemRunData &data) {
+    auto promise = boost::make_shared<boost::promise<module_result_t>>();
 
     boost::asio::post(system.threadPool, [this, promise, &system, &data]() {
         auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>(CARTSLAM_KEY_FEATURES);
