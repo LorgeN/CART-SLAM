@@ -134,19 +134,18 @@ boost::future<void> System::run() {
         throw std::invalid_argument("No modules have been added to the system");
     }
 
-    LOG4CXX_INFO(this->logger, "Running system");
     cv::cuda::Stream stream;
 
     // TODO: Sort the modules topologically for more efficient execution order
 
     boost::shared_ptr<SystemRunData> runData = this->startNewRun(stream);
-    LOG4CXX_DEBUG(this->logger, "Starting new run with id " << runData->id);
+    LOG4CXX_INFO(this->logger, "Starting new run with id " << runData->id);
 
     std::vector<boost::future<void>> moduleFutures;
 
     for (auto module : this->modules) {
         auto moduleName = std::quoted(module->name);
-        LOG4CXX_DEBUG(this->logger, "Running module " << moduleName);
+        LOG4CXX_INFO(this->logger, "Running module " << moduleName);
         boost::future<system_data_t> future;
 
         if (module->requiresData.size() > 0) {
@@ -183,7 +182,7 @@ boost::future<void> System::run() {
                 throw;
             }
 
-            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has completed");
+            LOG4CXX_INFO(this->logger, "Module " << moduleName << " has completed");
 
             if (data) {
                 LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data->first) << ". Inserting into run data.");
@@ -203,7 +202,7 @@ boost::future<void> System::run() {
         }
 
         runData->markAsComplete();
-        LOG4CXX_DEBUG(logger, "Run with ID " << runData->id << " has completed");
+        LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed");
 
         boost::lock_guard<boost::mutex> lock(this->runMutex);
         this->runCondition.notify_all();
