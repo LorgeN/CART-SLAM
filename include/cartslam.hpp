@@ -102,6 +102,20 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
 
     void addModule(boost::shared_ptr<SystemModule> module);
 
+    template <typename T>
+    boost::shared_ptr<T> getModule() {
+        static_assert(std::is_base_of<SystemModule, T>::value, "T must be a subclass of SystemModule");
+
+        for (const auto& module : this->modules) {
+            auto casted = boost::dynamic_pointer_cast<T>(module);
+            if (casted) {
+                return casted;
+            }
+        }
+
+        throw std::invalid_argument("Could not find module");
+    }
+
     boost::shared_ptr<SystemRunData> startNewRun(cv::cuda::Stream& stream);
     boost::shared_ptr<SystemRunData> getRunById(const uint32_t index);
     uint8_t getActiveRunCount();

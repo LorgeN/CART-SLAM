@@ -31,6 +31,8 @@ add_executable( cart_slam
     src/modules/disparity/interpolation.cu
     src/utils/ui.cpp
     src/utils/data.cpp
+    src/utils/colors.cpp
+    src/utils/peaks.cpp
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

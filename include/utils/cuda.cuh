@@ -6,6 +6,7 @@
 
 // OpenCV uses row-major order
 #define INDEX(x, y, rowStep) ((y) * (rowStep) + (x))
+#define INDEX_BGR(x, y, ch, rowStep) ((y) * (rowStep) + (x) * 3 + (ch))
 #define CLAMP(x, a, b) (max((a), min((b), (x))))
 #define SHARED_INDEX(x, y, xPadding, yPadding, rowStep) (((y) + (yPadding)) * ((rowStep) + 2 * (xPadding)) + ((x) + (xPadding)))
 

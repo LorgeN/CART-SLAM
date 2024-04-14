@@ -11,6 +11,7 @@
 
 #define CARTSLAM_KEY_PLANES "planes"
 #define CARTSLAM_KEY_PLANE_PARAMETERS "plane_parameters"
+#define CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST "disp_derivative_histogram"
 
 namespace cart {
 struct PlaneParameters {
@@ -31,16 +32,53 @@ enum Plane {
     UNKNOWN = 2
 };
 
+template <Plane>
+struct PlaneColor {};
+
+template <>
+struct PlaneColor<Plane::HORIZONTAL> {
+    static constexpr int r = 255;
+    static constexpr int g = 0;
+    static constexpr int b = 0;
+};
+
+template <>
+struct PlaneColor<Plane::VERTICAL> {
+    static constexpr int r = 0;
+    static constexpr int g = 255;
+    static constexpr int b = 0;
+};
+
+template <>
+struct PlaneColor<Plane::UNKNOWN> {
+    static constexpr int r = 0;
+    static constexpr int g = 0;
+    static constexpr int b = 255;
+};
+
+template <Plane P>
+typename cv::Scalar planeColor() {
+    // OpenCV uses BGR as the color order
+    return cv::Scalar(PlaneColor<P>::b, PlaneColor<P>::g, PlaneColor<P>::r);
+}
+
+class DisparityPlaneSegmentationVisualizationModule;
+
 class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
-    DisparityPlaneSegmentationModule(const int updateInterval = 1000) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}), updateInterval(updateInterval){};
+    DisparityPlaneSegmentationModule(const int updateInterval = 30) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}), updateInterval(updateInterval){};
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
+    friend class DisparityPlaneSegmentationVisualizationModule;
+
    private:
-    void updatePlaneParameters(cv::cuda::GpuMat& derivates, System& system, SystemRunData& data);
+    void updatePlaneParameters(System& system, SystemRunData& data);
 
     const int updateInterval;
+
+    boost::shared_mutex derivativeHistogramMutex;
+    cv::cuda::GpuMat derivativeHistogram;
 
     boost::atomic_bool planeParametersUpdated;
     boost::atomic_uint32_t lastUpdatedFrame;
