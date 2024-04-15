@@ -37,9 +37,9 @@ struct PlaneColor {};
 
 template <>
 struct PlaneColor<Plane::HORIZONTAL> {
-    static constexpr int r = 255;
+    static constexpr int r = 0;
     static constexpr int g = 0;
-    static constexpr int b = 0;
+    static constexpr int b = 255;
 };
 
 template <>
@@ -51,9 +51,9 @@ struct PlaneColor<Plane::VERTICAL> {
 
 template <>
 struct PlaneColor<Plane::UNKNOWN> {
-    static constexpr int r = 0;
+    static constexpr int r = 255;
     static constexpr int g = 0;
-    static constexpr int b = 255;
+    static constexpr int b = 0;
 };
 
 template <Plane P>

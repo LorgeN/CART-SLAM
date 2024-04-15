@@ -172,7 +172,16 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
     }
 }
 
-__global__ void overlayPlanes(cv::cuda::PtrStepSz<uint8_t> image, cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::PtrStepSz<uint8_t> output, int width, int height) {
+#define COLOR(plane) cart::PlaneColor<cart::Plane::plane>()
+
+struct plane_colors_t {
+    const int colors[3][3] = {
+        {COLOR(HORIZONTAL).b / 2, COLOR(HORIZONTAL).g / 2, COLOR(HORIZONTAL).r / 2},
+        {COLOR(VERTICAL).b / 2, COLOR(VERTICAL).g / 2, COLOR(VERTICAL).r / 2},
+        {COLOR(UNKNOWN).b / 2, COLOR(UNKNOWN).g / 2, COLOR(UNKNOWN).r / 2}};
+} planeColors;
+
+__global__ void overlayPlanes(cv::cuda::PtrStepSz<uint8_t> image, cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::PtrStepSz<uint8_t> output, int width, int height, plane_colors_t colors) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -195,19 +204,9 @@ __global__ void overlayPlanes(cv::cuda::PtrStepSz<uint8_t> image, cv::cuda::PtrS
             uint8_t g = image[INDEX_BGR(pixelX + j, pixelY + i, 1, imageRowStep)];
             uint8_t r = image[INDEX_BGR(pixelX + j, pixelY + i, 2, imageRowStep)];
 
-            if (plane == cart::Plane::HORIZONTAL) {
-                b = b / 2 + cart::PlaneColor<cart::Plane::HORIZONTAL>().b / 2;
-                g = g / 2 + cart::PlaneColor<cart::Plane::HORIZONTAL>().g / 2;
-                r = r / 2 + cart::PlaneColor<cart::Plane::HORIZONTAL>().r / 2;
-            } else if (plane == cart::Plane::VERTICAL) {
-                b = b / 2 + cart::PlaneColor<cart::Plane::VERTICAL>().b / 2;
-                g = g / 2 + cart::PlaneColor<cart::Plane::VERTICAL>().g / 2;
-                r = r / 2 + cart::PlaneColor<cart::Plane::VERTICAL>().r / 2;
-            }
-
-            output[INDEX_BGR(pixelX + j, pixelY + i, 0, outputRowStep)] = b;
-            output[INDEX_BGR(pixelX + j, pixelY + i, 1, outputRowStep)] = g;
-            output[INDEX_BGR(pixelX + j, pixelY + i, 2, outputRowStep)] = r;
+            output[INDEX_BGR(pixelX + j, pixelY + i, 0, outputRowStep)] = b / 2 + colors.colors[plane][0];
+            output[INDEX_BGR(pixelX + j, pixelY + i, 1, outputRowStep)] = g / 2 + colors.colors[plane][1];
+            output[INDEX_BGR(pixelX + j, pixelY + i, 2, outputRowStep)] = r / 2 + colors.colors[plane][2];
         }
     }
 }
@@ -336,23 +335,25 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
 
         if (!planes->empty()) {
             // Show image
-            {
-                boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
+            boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
 
-                dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-                dim3 numBlocks((planes->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
-                               (planes->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
+            dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+            dim3 numBlocks((planes->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
+                           (planes->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
 
-                cv::cuda::GpuMat output(planes->size(), CV_8UC3);
-                overlayPlanes<<<numBlocks, threadsPerBlock>>>(stereoData->left, *planes, output, planes->cols, planes->rows);
+            cv::cuda::GpuMat output(planes->size(), CV_8UC3);
+            cv::Mat image;
 
-                CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
-                CUDA_SAFE_CALL(this->logger, cudaDeviceSynchronize());
+            cv::cuda::Stream cvStream;
+            cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
 
-                cv::Mat image;
-                output.download(image);
-                this->imageThread->setImageIfLater(image, data.id);
-            }
+            overlayPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(stereoData->left, *planes, output, planes->cols, planes->rows, planeColors);
+            CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
+
+            output.download(image, cvStream);
+            CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+
+            this->imageThread->setImageIfLater(image, data.id);
         }
 
         if (!system.hasData(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST)) {
