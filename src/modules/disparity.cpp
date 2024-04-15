@@ -4,6 +4,7 @@
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
 #include "modules/disparity/interpolation.cuh"
+#include "sources/zed.hpp"
 
 namespace cart {
 system_data_t ImageDisparityModule::runInternal(System& system, SystemRunData& data) {
@@ -38,6 +39,33 @@ system_data_t ImageDisparityModule::runInternal(System& system, SystemRunData& d
 
     return MODULE_RETURN(CARTSLAM_KEY_DISPARITY, boost::make_shared<cv::cuda::GpuMat>(boost::move(disparity)));
 }
+
+#ifdef CARTSLAM_ZED
+system_data_t ZEDImageDisparityModule::runInternal(System& system, SystemRunData& data) {
+    LOG4CXX_DEBUG(this->logger, "Running ZED ImageDisparityModule");
+
+    if (data.dataElement->type != DataElementType::STEREO) {
+        throw std::runtime_error("ImageDisparityModule requires StereoDataElement");
+    }
+
+    cv::cuda::Stream stream;
+
+    boost::shared_ptr<sources::ZEDDataElement> stereoData = boost::static_pointer_cast<sources::ZEDDataElement>(data.dataElement);
+
+    cv::cuda::GpuMat disparity = stereoData->disparityMeasure;
+    if (disparity.empty()) {
+        throw std::runtime_error("Disparity measure not available! Make sure to set extractDepthMeasure to true in ZEDDataSource constructor.");
+    }
+
+    if (this->smoothingRadius > 0) {
+        disparity::interpolate(this->logger, disparity, stream, this->smoothingRadius, this->smoothingIterations);
+    }
+
+    stream.waitForCompletion();
+
+    return MODULE_RETURN(CARTSLAM_KEY_DISPARITY, boost::make_shared<cv::cuda::GpuMat>(boost::move(disparity)));
+}
+#endif  // CARTSLAM_ZED
 
 boost::future<system_data_t> ImageDisparityVisualizationModule::run(System& system, SystemRunData& data) {
     auto promise = boost::make_shared<boost::promise<system_data_t>>();

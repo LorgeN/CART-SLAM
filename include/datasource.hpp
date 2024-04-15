@@ -27,6 +27,7 @@ class StereoDataElement : public DataElement {
 
     StereoDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) : DataElement(DataElementType::STEREO), left(left), right(right){};
 
+    // TODO: Redefine type so that it is moved to CPU when the run finishes
     CARTSLAM_IMAGE_TYPE left;
     CARTSLAM_IMAGE_TYPE right;
 };
@@ -53,20 +54,10 @@ class DataSource {
    public:
     virtual ~DataSource() = default;
     boost::shared_ptr<DataElement> getNext(cv::cuda::Stream& stream);
-    virtual boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) = 0;
+    virtual bool hasNext() = 0;
     virtual DataElementType getProvidedType() = 0;
+
+   protected:
+    virtual boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) = 0;
 };
-
-class KITTIDataSource : public DataSource {
-   public:
-    KITTIDataSource(std::string basePath, int sequence);
-    KITTIDataSource(std::string path);
-    boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) override;
-    DataElementType getProvidedType() override;
-
-   private:
-    std::string path;
-    int currentFrame;
-};
-
 }  // namespace cart

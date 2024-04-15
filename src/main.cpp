@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "cartslam.hpp"
-#include "datasource.hpp"
 #include "logging.hpp"
 #include "modules/disparity.hpp"
 #include "modules/features.hpp"
@@ -10,6 +9,8 @@
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
+#include "sources/kitti.hpp"
+#include "sources/zed.hpp"
 #include "timing.hpp"
 
 int main(int argc, char* argv[]) {
@@ -20,9 +21,11 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    auto dataSource = boost::make_shared<cart::KITTIDataSource>(argv[1], 0);
+    // auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
+    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
+    // system->addModule<cart::ZEDImageDisparityModule>();
     system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
     system->addModule<cart::ImageDisparityVisualizationModule>();
 
@@ -39,7 +42,7 @@ int main(int argc, char* argv[]) {
 
     boost::future<void> last;
 
-    for (int i = 0; i < 3000; i++) {
+    while (dataSource->hasNext()) {
         CARTSLAM_START_TIMING(system);
 
         last = system->run();

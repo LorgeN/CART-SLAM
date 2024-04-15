@@ -18,11 +18,14 @@ find_package( Boost REQUIRED COMPONENTS system thread timer chrono )
 find_package( OpenCV REQUIRED )
 find_package( log4cxx 1.1 )
 find_package( OpenMP )
+find_package( ZED 4 )
 
 add_executable( cart_slam 
     src/main.cpp 
     src/cartslam.cpp     
     src/datasource.cpp
+    src/sources/kitti.cpp
+    src/sources/zed.cpp
     src/logging.cpp 
     src/modules/features.cpp 
     src/modules/optflow.cpp
@@ -51,8 +54,16 @@ target_link_libraries( cart_slam PUBLIC ${OpenCV_LIBS} )
 target_link_libraries( cart_slam PUBLIC Boost::system Boost::thread Boost::timer Boost::chrono )
 target_link_libraries( cart_slam PUBLIC log4cxx)
 
+target_include_directories( cart_slam PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} )
+
 if(OpenMP_CXX_FOUND)
     target_link_libraries( cart_slam PUBLIC OpenMP::OpenMP_CXX )
+endif()
+
+if(ZED_FOUND)
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_ZED )
+    target_include_directories( cart_slam PRIVATE ${ZED_INCLUDE_DIRS} )
+    target_link_libraries( cart_slam PUBLIC ${ZED_LIBRARIES} )
 endif()
 
 target_include_directories( cart_slam PRIVATE $<TARGET_PROPERTY:log4cxx,INTERFACE_INCLUDE_DIRECTORIES>)

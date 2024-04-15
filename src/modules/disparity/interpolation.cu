@@ -83,6 +83,11 @@ void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cud
     int width = disparity.cols;
     int height = disparity.rows;
 
+    LOG4CXX_DEBUG(logger, "Disparity map size: " << width << "x" << height);
+    LOG4CXX_DEBUG(logger, "Interpolation radius: " << radius);
+    LOG4CXX_DEBUG(logger, "Number of iterations: " << iterations);
+    LOG4CXX_DEBUG(logger, "Channels: " << disparity.channels());
+
     dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
     dim3 numBlocks((disparity.cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
                    (disparity.rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));

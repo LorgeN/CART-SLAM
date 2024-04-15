@@ -34,6 +34,19 @@ class ImageDisparityModule : public SyncWrapperSystemModule {
     int smoothingIterations;
 };
 
+#ifdef CARTSLAM_ZED
+class ZEDImageDisparityModule : public SyncWrapperSystemModule {
+   public:
+    ZEDImageDisparityModule(int smoothingRadius = -1, int smoothingIterations = 5) : SyncWrapperSystemModule("ZEDImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations){};
+
+    system_data_t runInternal(System& system, SystemRunData& data) override;
+
+   private:
+    int smoothingRadius;
+    int smoothingIterations;
+};
+#endif  // CARTSLAM_ZED
+
 class ImageDisparityVisualizationModule : public SystemModule {
    public:
     ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization", {CARTSLAM_KEY_DISPARITY}) {

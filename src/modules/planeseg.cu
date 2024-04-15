@@ -278,7 +278,6 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
 void DisparityPlaneSegmentationModule::updatePlaneParameters(System& system, SystemRunData& data) {
     // TODO: Inspiration for alternative: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7926705&tag=1
     this->lastUpdatedFrame = data.id;
-    // TODO: Find peeks and minimum between peeks
 
     cv::Mat histogram;
 
