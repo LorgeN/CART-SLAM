@@ -25,8 +25,12 @@ class ZEDDataSource : public DataSource {
     boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) override;
 
    private:
-    bool extractDisparityMeasure;
-    std::string path;
+    const bool extractDisparityMeasure;
+    const std::string path;
+
+    bool hasGrabbed = false;
+    sl::ERROR_CODE grabResult;
+
     boost::shared_ptr<sl::Camera> camera;
 };
 

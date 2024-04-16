@@ -28,6 +28,7 @@
 
 typedef int16_t derivative_t;
 
+// TODO: Change disparity values to float?
 __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity, cv::cuda::PtrStepSz<derivative_t> output, cv::cuda::PtrStepSz<int> histogramOutput, int width, int height) {
     __shared__ cart::disparity_t sharedDisparity[SHARED_SIZE];
     __shared__ int localHistogram[256];
@@ -355,8 +356,8 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     int verticalWidth = histogram.at<int>(peaks[0].born) / verticalDerivative;
     int horizontalWidth = histogram.at<int>(peaks[1].born) / horizontalDerivative;
 
-    this->verticalRange = std::make_pair(peaks[0].born - verticalWidth - 128, minIndex - 128);
-    this->horizontalRange = std::make_pair(minIndex - 128, peaks[1].born + horizontalWidth - 128);
+    this->verticalRange = std::make_pair(peaks[0].born - verticalWidth - 128, minIndex - 127);
+    this->horizontalRange = std::make_pair(minIndex - 127, peaks[1].born + horizontalWidth - 127);
 
     LOG4CXX_DEBUG(logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
     LOG4CXX_DEBUG(logger, "Vertical range: " << this->verticalRange.first << " - " << this->verticalRange.second);

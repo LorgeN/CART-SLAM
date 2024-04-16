@@ -19,12 +19,11 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(
 
     params.input.setFromSVOFile(path.c_str());
     params.coordinate_units = sl::UNIT::METER;
+    params.depth_mode = sl::DEPTH_MODE::QUALITY;
 
-    if (extractDepthMeasure) {
-        params.depth_mode = sl::DEPTH_MODE::QUALITY;
-    } else {
-        params.depth_mode = sl::DEPTH_MODE::NONE;
-    }
+#ifdef CARTSLAM_DEBUG
+    params.sdk_verbose = true;
+#endif
 
     sl::ERROR_CODE err = this->camera->open(params);
     if (err != sl::ERROR_CODE::SUCCESS) {
@@ -37,7 +36,12 @@ ZEDDataSource::~ZEDDataSource() {
 }
 
 bool ZEDDataSource::hasNext() {
-    return this->camera->grab() == sl::ERROR_CODE::SUCCESS;
+    if (!this->hasGrabbed) {
+        this->grabResult = this->camera->grab();
+        this->hasGrabbed = true;
+    }
+
+    return this->grabResult == sl::ERROR_CODE::SUCCESS;
 }
 
 DataElementType ZEDDataSource::getProvidedType() {
@@ -45,6 +49,16 @@ DataElementType ZEDDataSource::getProvidedType() {
 }
 
 boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
+    if (!this->hasGrabbed) {
+        this->grabResult = this->camera->grab();
+        if (this->grabResult != sl::ERROR_CODE::SUCCESS) {
+            LOG4CXX_ERROR(logger, "Failed to grab frame");
+            return nullptr;
+        }
+    }
+
+    this->hasGrabbed = false;
+
     sl::Mat left, right;
     sl::ERROR_CODE leftRes = this->camera->retrieveImage(left, sl::VIEW::LEFT, sl::MEM::GPU, RES);
     if (leftRes != sl::ERROR_CODE::SUCCESS) {
