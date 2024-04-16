@@ -10,6 +10,8 @@
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
 
+#define CARTSLAM_DISPARITY_INVALID -1
+
 #define SGM_P1(blockSize) (2 * blockSize * blockSize)
 #define SGM_P2(blockSize) (8 * blockSize * blockSize)
 

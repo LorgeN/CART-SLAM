@@ -1,5 +1,7 @@
 #pragma once
 
+#include <log4cxx/logger.h>
+
 #include <boost/thread.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -53,11 +55,11 @@ class DataElementVisitor {
 class DataSource {
    public:
     virtual ~DataSource() = default;
-    boost::shared_ptr<DataElement> getNext(cv::cuda::Stream& stream);
+    boost::shared_ptr<DataElement> getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream);
     virtual bool hasNext() = 0;
     virtual DataElementType getProvidedType() = 0;
 
    protected:
-    virtual boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) = 0;
+    virtual boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) = 0;
 };
 }  // namespace cart

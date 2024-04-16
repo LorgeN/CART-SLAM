@@ -93,7 +93,17 @@ uint8_t System::getActiveRunCount() {
 boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
     boost::unique_lock<boost::mutex> lock(this->runMutex);
     auto previousRunId = this->runId;
-    auto data = boost::make_shared<SystemRunData>(++this->runId, this->weak_from_this(), this->dataSource->getNext(stream));
+
+    boost::shared_ptr<DataElement> element;
+
+    try {
+        element = this->dataSource->getNext(this->logger, stream);
+    } catch (const std::exception& e) {
+        LOG4CXX_ERROR(this->logger, "Error getting next element: " << e.what());
+        throw;
+    }
+
+    auto data = boost::make_shared<SystemRunData>(++this->runId, this->weak_from_this(), element);
     // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
     while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
         LOG4CXX_DEBUG(this->logger, "Waiting for a run to complete");

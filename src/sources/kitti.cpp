@@ -27,7 +27,7 @@ DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-boost::shared_ptr<DataElement> KITTIDataSource::getNextInternal(cv::cuda::Stream& stream) {
+boost::shared_ptr<DataElement> KITTIDataSource::getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
     cv::Mat left = cv::imread(LEFT_PATH(this->currentFrame));
     cv::Mat right = cv::imread(RIGHT_PATH(this->currentFrame));
 

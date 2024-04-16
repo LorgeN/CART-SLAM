@@ -10,7 +10,6 @@ const sl::Resolution RES = sl::Resolution(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_R
 
 ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(path), extractDisparityMeasure(extractDepthMeasure) {
     this->camera = boost::make_shared<sl::Camera>();
-    this->imageThread = ImageProvider::create("Temp fun display for testing");
 
     sl::InitParameters params;
 
@@ -45,11 +44,22 @@ DataElementType ZEDDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
 
-boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(cv::cuda::Stream& stream) {
+boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
     sl::Mat left, right;
-    this->camera->retrieveImage(left, sl::VIEW::LEFT, sl::MEM::GPU, RES);
-    this->camera->retrieveImage(right, sl::VIEW::RIGHT, sl::MEM::GPU, RES);
+    sl::ERROR_CODE leftRes = this->camera->retrieveImage(left, sl::VIEW::LEFT, sl::MEM::GPU, RES);
+    if (leftRes != sl::ERROR_CODE::SUCCESS) {
+        LOG4CXX_ERROR(logger, "Failed to retrieve left image");
+        return nullptr;
+    }
 
+    sl::ERROR_CODE rightRes = this->camera->retrieveImage(right, sl::VIEW::RIGHT, sl::MEM::GPU, RES);
+    if (rightRes != sl::ERROR_CODE::SUCCESS) {
+        LOG4CXX_ERROR(logger, "Failed to retrieve right image");
+        return nullptr;
+    }
+
+    // Clone these because the ZED SDK has terrible memory management, and it was causing issues by
+    // randomly freeing the memory.
     auto element = boost::make_shared<ZEDDataElement>(slMat2cvGpuMat(left).clone(), slMat2cvGpuMat(right).clone());
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
@@ -62,9 +72,13 @@ boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(cv::cuda::Stream& 
 
     if (this->extractDisparityMeasure) {
         sl::Mat disparityMeasure;
-        this->camera->retrieveMeasure(disparityMeasure, sl::MEASURE::DISPARITY, sl::MEM::GPU, RES);
+        sl::ERROR_CODE dispRes = this->camera->retrieveMeasure(disparityMeasure, sl::MEASURE::DISPARITY, sl::MEM::GPU, RES);
+        if (dispRes != sl::ERROR_CODE::SUCCESS) {
+            LOG4CXX_ERROR(logger, "Failed to retrieve disparity measure");
+            return nullptr;
+        }
+
         element->disparityMeasure = slMat2cvGpuMat(disparityMeasure).clone();
-        element->disparityMeasure.convertTo(element->disparityMeasure, CV_16SC1, -16.0, 0, stream);
     }
 
     return element;

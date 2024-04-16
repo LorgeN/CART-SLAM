@@ -14,7 +14,7 @@ class KITTIDataSource : public DataSource {
     DataElementType getProvidedType() override;
 
    protected:
-    boost::shared_ptr<DataElement> getNextInternal(cv::cuda::Stream& stream) override;
+    boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) override;
 
    private:
     std::string path;

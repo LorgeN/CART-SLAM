@@ -20,8 +20,6 @@
 
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 0, LOW_PASS_FILTER_PADDING, sharedRowStep)
 
-#define VALID(x, y) (sharedDisparity[LOCAL_INDEX(x, y)] >= 0 && sharedDisparity[LOCAL_INDEX(x, y)] <= 16 * 256)
-
 #define DISPARITY_SCALING (1.0 / 16.0)
 
 #define ROUND_TO_INT(x) static_cast<int32_t>(round(x))
@@ -61,8 +59,9 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
         cart::disparity_t previous[LOW_PASS_FILTER_PADDING] = {0};
         size_t previousIndex = 0;
 
+#pragma unroll
         for (int i = -LOW_PASS_FILTER_PADDING; i < LOW_PASS_FILTER_PADDING; i++) {
-            cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)] * VALID(j, i);
+            cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)];
             sum += value;
 
             if (i < 0) {
@@ -74,9 +73,9 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
         previousIndex = 0;
 
         for (int i = 0; i < Y_BATCH; i++) {
-            sum += sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)] * VALID(j, i + LOW_PASS_FILTER_PADDING);
+            sum += sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)];
 
-            cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)] * VALID(j, i);
+            cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)];
 
             sharedDisparity[LOCAL_INDEX(j, i)] = sum / LOW_PASS_FILTER_SIZE;
 
@@ -99,12 +98,10 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
                 sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
-            bool currValid = VALID(j, i);
-
-            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = currValid ? derivative : (-1 << 15);
+            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = derivative;
 
             // Only update histogram if the value is within the range of a signed char
-            if (derivative >= -128 && derivative <= 127 && currValid) {
+            if (derivative >= -128 && derivative <= 127) {
                 atomicAdd(&localHistogram[derivative + 128], 1);
             }
         }

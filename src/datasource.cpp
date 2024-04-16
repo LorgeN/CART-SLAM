@@ -20,12 +20,12 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
 }
 
 namespace cart {
-boost::shared_ptr<DataElement> DataSource::getNext(cv::cuda::Stream& stream) {
+boost::shared_ptr<DataElement> DataSource::getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
     if (!this->hasNext()) {
         throw std::runtime_error("No more elements to read");
     }
 
-    auto element = this->getNextInternal(stream);
+    auto element = this->getNextInternal(logger, stream);
 
     switch (element->type) {
         case STEREO: {
