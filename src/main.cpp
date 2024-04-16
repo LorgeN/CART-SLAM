@@ -29,7 +29,9 @@ int main(int argc, char* argv[]) {
     // system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
     system->addModule<cart::ImageDisparityVisualizationModule>();
 
-    system->addModule<cart::DisparityPlaneSegmentationModule>(boost::make_shared<cart::HistogramPeakPlaneParameterProvider>(), 5, 1000);
+    auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 9), std::make_pair(-3, 3));
+    // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
+    system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 5, 1000);
     system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));

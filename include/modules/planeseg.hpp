@@ -93,6 +93,15 @@ class HistogramPeakPlaneParameterProvider : public PlaneParameterProvider {
     void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) override;
 };
 
+class StaticPlaneParameterProvider : public PlaneParameterProvider {
+   public:
+    StaticPlaneParameterProvider(const int horizontalCenter, const int verticalCenter, const std::pair<int, int> horizontalRange, const std::pair<int, int> verticalRange)
+        : PlaneParameterProvider(horizontalCenter, verticalCenter, horizontalRange, verticalRange){};
+
+   protected:
+    void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) override{};
+};
+
 class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
     DisparityPlaneSegmentationModule(
