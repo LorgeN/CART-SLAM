@@ -12,6 +12,8 @@
 #define LOW_PASS_FILTER_SIZE 5
 #define LOW_PASS_FILTER_PADDING (LOW_PASS_FILTER_SIZE / 2)
 
+#define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)
+
 #define THREADS_PER_BLOCK_X 16
 #define THREADS_PER_BLOCK_Y 16
 #define X_BATCH 8
@@ -55,6 +57,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     for (int j = 0; j < X_BATCH; j++) {
         // Sliding window sum
         derivative_t sum = 0;
+        int count = 0;
 
         cart::disparity_t previous[LOW_PASS_FILTER_PADDING] = {0};
         size_t previousIndex = 0;
@@ -62,7 +65,10 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
 #pragma unroll
         for (int i = -LOW_PASS_FILTER_PADDING; i < LOW_PASS_FILTER_PADDING; i++) {
             cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)];
-            sum += value;
+            if (value != CARTSLAM_DISPARITY_INVALID) {
+                sum += value;
+                count++;
+            }
 
             if (i < 0) {
                 previous[previousIndex] = value;
@@ -73,13 +79,22 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
         previousIndex = 0;
 
         for (int i = 0; i < Y_BATCH; i++) {
-            sum += sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)];
+            cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)];
+            if (value != CARTSLAM_DISPARITY_INVALID) {
+                sum += value;
+                count++;
+            }
 
             cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)];
 
-            sharedDisparity[LOCAL_INDEX(j, i)] = sum / LOW_PASS_FILTER_SIZE;
+            sharedDisparity[LOCAL_INDEX(j, i)] = sum / count;
 
-            sum -= previous[previousIndex];
+            value = previous[previousIndex];
+            if (value != CARTSLAM_DISPARITY_INVALID) {
+                sum -= value;
+                count--;
+            }
+
             previous[previousIndex] = current;
             previousIndex = (previousIndex + 1) % LOW_PASS_FILTER_PADDING;
         }
@@ -98,10 +113,13 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
                 sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
-            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = derivative;
+            bool valid = sharedDisparity[LOCAL_INDEX(j, i)] != CARTSLAM_DISPARITY_INVALID &&
+                         sharedDisparity[LOCAL_INDEX(j, i + 1)] != CARTSLAM_DISPARITY_INVALID &&
+                         sharedDisparity[LOCAL_INDEX(j, i - 1)] != CARTSLAM_DISPARITY_INVALID;
+            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = valid ? derivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
 
             // Only update histogram if the value is within the range of a signed char
-            if (derivative >= -128 && derivative <= 127) {
+            if (derivative >= -128 && derivative <= 127 && valid) {
                 atomicAdd(&localHistogram[derivative + 128], 1);
             }
         }
@@ -146,11 +164,11 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
     size_t derivativesRowStep = derivatives.step / sizeof(derivative_t);
     size_t planesRowStep = planes.step / sizeof(uint8_t);
 
-    int horizontalStart = params.horizontalCenter - params.horizontalVariance;
-    int horizontalEnd = params.horizontalCenter + params.horizontalVariance;
+    int horizontalStart = params.horizontalRange.first;
+    int horizontalEnd = params.horizontalRange.second;
 
-    int verticalStart = params.verticalCenter - params.verticalVariance;
-    int verticalEnd = params.verticalCenter + params.verticalVariance;
+    int verticalStart = params.verticalRange.first;
+    int verticalEnd = params.verticalRange.second;
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
@@ -159,12 +177,11 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
             }
 
             derivative_t derivative = derivatives[INDEX(pixelX + j, pixelY + i, derivativesRowStep)];
-
             int plane = cart::Plane::UNKNOWN;
 
-            if (derivative >= horizontalStart && derivative <= horizontalEnd) {
+            if (derivative != CARTSLAM_DISPARITY_DERIVATIVE_INVALID && derivative >= horizontalStart && derivative < horizontalEnd) {
                 plane = cart::Plane::HORIZONTAL;
-            } else if (derivative >= verticalStart && derivative <= verticalEnd) {
+            } else if (derivative != CARTSLAM_DISPARITY_DERIVATIVE_INVALID && derivative >= verticalStart && derivative < verticalEnd) {
                 plane = cart::Plane::VERTICAL;
             }
 
@@ -329,11 +346,21 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     LOG4CXX_DEBUG(logger, "Peaks: " << peaks[0].born << ", " << peaks[1].born << ", Min: " << minIndex);
 
     // Set variance as distance from peak to minimum
-    this->verticalVariance = abs(minIndex - peaks[0].born);
-    this->horizontalVariance = abs(minIndex - peaks[1].born);
+    int verticalMinDist = abs(minIndex - peaks[0].born);
+    int horizontalMinDist = abs(minIndex - peaks[1].born);
+
+    int verticalDerivative = (histogram.at<int>(peaks[0].born) - histogram.at<int>(minIndex)) / verticalMinDist;
+    int horizontalDerivative = (histogram.at<int>(peaks[1].born) - histogram.at<int>(minIndex)) / horizontalMinDist;
+
+    int verticalWidth = histogram.at<int>(peaks[0].born) / verticalDerivative;
+    int horizontalWidth = histogram.at<int>(peaks[1].born) / horizontalDerivative;
+
+    this->verticalRange = std::make_pair(peaks[0].born - verticalWidth - 128, minIndex - 128);
+    this->horizontalRange = std::make_pair(minIndex - 128, peaks[1].born + horizontalWidth - 128);
 
     LOG4CXX_DEBUG(logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
-    LOG4CXX_DEBUG(logger, "Vertical variance: " << this->verticalVariance << ", Horizontal variance: " << this->horizontalVariance);
+    LOG4CXX_DEBUG(logger, "Vertical range: " << this->verticalRange.first << " - " << this->verticalRange.second);
+    LOG4CXX_DEBUG(logger, "Horizontal range: " << this->horizontalRange.first << " - " << this->horizontalRange.second);
 }
 
 boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
@@ -388,16 +415,16 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
             cv::circle(histImage, cv::Point((parameters->horizontalCenter + 128) * bin_w, hist_h - 5), 3, planeColor<Plane::HORIZONTAL>(), -1);
             cv::circle(histImage, cv::Point((parameters->verticalCenter + 128) * bin_w, hist_h - 5), 3, planeColor<Plane::VERTICAL>(), -1);
 
-            int horizStart = parameters->horizontalCenter + 128 - parameters->horizontalVariance;
-            int horizEnd = parameters->horizontalCenter + 128 + parameters->horizontalVariance;
-            int vertStart = parameters->verticalCenter + 128 - parameters->verticalVariance;
-            int vertEnd = parameters->verticalCenter + 128 + parameters->verticalVariance;
+            int horizStart = parameters->horizontalRange.first + 128;
+            int horizEnd = parameters->horizontalRange.second + 128;
+            int vertStart = parameters->verticalRange.first + 128;
+            int vertEnd = parameters->verticalRange.second + 128;
 
             for (int i = 1; i < histSize; i++) {
                 cv::Scalar color = planeColor<Plane::UNKNOWN>();
-                if (i >= horizStart && i <= horizEnd) {
+                if (i >= horizStart && i < horizEnd) {
                     color = planeColor<Plane::HORIZONTAL>();
-                } else if (i >= vertStart && i <= vertEnd) {
+                } else if (i >= vertStart && i < vertEnd) {
                     color = planeColor<Plane::VERTICAL>();
                 }
 

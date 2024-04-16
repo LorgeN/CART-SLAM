@@ -15,15 +15,14 @@
 
 namespace cart {
 struct PlaneParameters {
-    PlaneParameters() : horizontalCenter(0), horizontalVariance(0), verticalCenter(0), verticalVariance(0){};
+    PlaneParameters(const int horizontalCenter, const int verticalCenter, const std::pair<int, int> horizontalRange, const std::pair<int, int> verticalRange)
+        : horizontalCenter(horizontalCenter), verticalCenter(verticalCenter), horizontalRange(horizontalRange), verticalRange(verticalRange){};
 
-    PlaneParameters(int horizontalCenter, int horizontalVariance, int verticalCenter, int verticalVariance)
-        : horizontalCenter(horizontalCenter), horizontalVariance(horizontalVariance), verticalCenter(verticalCenter), verticalVariance(verticalVariance){};
+    const std::pair<int, int> horizontalRange;
+    const std::pair<int, int> verticalRange;
 
     const int horizontalCenter;
-    const int horizontalVariance;
     const int verticalCenter;
-    const int verticalVariance;
 };
 
 enum Plane {
@@ -68,27 +67,27 @@ class DisparityPlaneSegmentationVisualizationModule;
 class PlaneParameterProvider {
    public:
     PlaneParameters getPlaneParameters() const {
-        return PlaneParameters(horizontalCenter, horizontalVariance, verticalCenter, verticalVariance);
+        return PlaneParameters(horizontalCenter, verticalCenter, horizontalRange, verticalRange);
     }
 
     friend class DisparityPlaneSegmentationModule;
 
    protected:
-    PlaneParameterProvider(int horizontalCenter, int horizontalVariance, int verticalCenter, int verticalVariance)
-        : horizontalCenter(horizontalCenter), horizontalVariance(horizontalVariance), verticalCenter(verticalCenter), verticalVariance(verticalVariance){};
-        
+    PlaneParameterProvider(const int horizontalCenter = 0, const int verticalCenter = 0, const std::pair<int, int> horizontalRange = std::make_pair(0, 0), const std::pair<int, int> verticalRange = std::make_pair(0, 0))
+        : horizontalCenter(horizontalCenter), verticalCenter(verticalCenter), horizontalRange(horizontalRange), verticalRange(verticalRange){};
+
     virtual void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) = 0;
 
+    std::pair<int, int> horizontalRange;
+    std::pair<int, int> verticalRange;
+
     int horizontalCenter;
-    int horizontalVariance;
     int verticalCenter;
-    int verticalVariance;
 };
 
 class HistogramPeakPlaneParameterProvider : public PlaneParameterProvider {
    public:
-    HistogramPeakPlaneParameterProvider()
-        : PlaneParameterProvider(0, 0, 0, 0){};
+    HistogramPeakPlaneParameterProvider(){};
 
    protected:
     void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) override;
