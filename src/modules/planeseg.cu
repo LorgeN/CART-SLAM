@@ -20,6 +20,8 @@
 
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 0, LOW_PASS_FILTER_PADDING, sharedRowStep)
 
+#define VALID(x, y) (sharedDisparity[LOCAL_INDEX(x, y)] >= 0 && sharedDisparity[LOCAL_INDEX(x, y)] <= 16 * 256)
+
 #define DISPARITY_SCALING (1.0 / 16.0)
 
 #define ROUND_TO_INT(x) static_cast<int32_t>(round(x))
@@ -60,7 +62,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
         size_t previousIndex = 0;
 
         for (int i = -LOW_PASS_FILTER_PADDING; i < LOW_PASS_FILTER_PADDING; i++) {
-            cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)];
+            cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)] * VALID(j, i);
             sum += value;
 
             if (i < 0) {
@@ -72,9 +74,9 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
         previousIndex = 0;
 
         for (int i = 0; i < Y_BATCH; i++) {
-            sum += sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)];
+            sum += sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)] * VALID(j, i + LOW_PASS_FILTER_PADDING);
 
-            cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)];
+            cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)] * VALID(j, i);
 
             sharedDisparity[LOCAL_INDEX(j, i)] = sum / LOW_PASS_FILTER_SIZE;
 
@@ -97,10 +99,12 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
                 sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
-            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = derivative;
+            bool currValid = VALID(j, i);
+
+            output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = currValid ? derivative : (-1 << 15);
 
             // Only update histogram if the value is within the range of a signed char
-            if (derivative >= -128 && derivative <= 127) {
+            if (derivative >= -128 && derivative <= 127 && currValid) {
                 atomicAdd(&localHistogram[derivative + 128], 1);
             }
         }
@@ -135,7 +139,7 @@ __global__ void histogramMerge(cv::cuda::PtrStepSz<int> histogram, cv::cuda::Ptr
     atomicAdd(output + channel, sum);
 }
 
-__global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv::cuda::PtrStepSz<uint8_t> planes, int width, int height, int horizontalCenter, int horizontalVariance, int verticalCenter, int verticalVariance) {
+__global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv::cuda::PtrStepSz<uint8_t> planes, int width, int height, cart::PlaneParameters params) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -145,11 +149,11 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
     size_t derivativesRowStep = derivatives.step / sizeof(derivative_t);
     size_t planesRowStep = planes.step / sizeof(uint8_t);
 
-    int horizontalStart = horizontalCenter - horizontalVariance;
-    int horizontalEnd = horizontalCenter + horizontalVariance;
+    int horizontalStart = params.horizontalCenter - params.horizontalVariance;
+    int horizontalEnd = params.horizontalCenter + params.horizontalVariance;
 
-    int verticalStart = verticalCenter - verticalVariance;
-    int verticalEnd = verticalCenter + verticalVariance;
+    int verticalStart = params.verticalCenter - params.verticalVariance;
+    int verticalEnd = params.verticalCenter + params.verticalVariance;
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
@@ -256,9 +260,7 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
     }
 
     LOG4CXX_DEBUG(this->logger, "Derivatives calculated");
-    if (data.id % this->updateInterval == 1) {
-        this->updatePlaneParameters(system, data);
-    }
+    this->updatePlaneParameters(system, data);
 
     cv::cuda::GpuMat planes(disparity->size(), CV_8UC1);
 
@@ -266,7 +268,8 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
         cudaStream_t stream;
         cudaStreamCreate(&stream);
 
-        classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, disparity->cols, disparity->rows, this->horizontalCenter, this->horizontalVariance, this->verticalCenter, this->verticalVariance);
+        PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
+        classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, disparity->cols, disparity->rows, params);
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
@@ -277,20 +280,35 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
 
 void DisparityPlaneSegmentationModule::updatePlaneParameters(System& system, SystemRunData& data) {
     // TODO: Inspiration for alternative: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7926705&tag=1
-    this->lastUpdatedFrame = data.id;
+    if (data.id % this->updateInterval != 1) {
+        return;
+    }
 
     cv::Mat histogram;
 
     {
         boost::unique_lock<boost::shared_mutex> lock(this->derivativeHistogramMutex);
         this->derivativeHistogram.download(histogram);
-        this->derivativeHistogram.setTo(0);
+
+        if (data.id % (this->updateInterval * this->resetInterval) == 1) {
+            // Reset to avoid overflow
+            this->derivativeHistogram.setTo(0);
+        }
     }
 
+    this->planeParameterProvider->updatePlaneParameters(this->logger, system, data, histogram);
+
+    system.insertGlobalData(CARTSLAM_KEY_PLANE_PARAMETERS, boost::make_shared<PlaneParameters>(this->planeParameterProvider->getPlaneParameters()));
+
+    auto histShared = boost::make_shared<cv::Mat>(boost::move(histogram));
+    system.insertGlobalData(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST, histShared);
+}
+
+void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) {
     std::vector<util::Peak> peaks = util::findPeaks(histogram);
 
     if (peaks.size() < 2) {
-        LOG4CXX_DEBUG(this->logger, "Not enough peaks found");
+        LOG4CXX_DEBUG(logger, "Not enough peaks found");
         return;
     }
 
@@ -311,19 +329,14 @@ void DisparityPlaneSegmentationModule::updatePlaneParameters(System& system, Sys
         }
     }
 
-    LOG4CXX_DEBUG(this->logger, "Peaks: " << peaks[0].born << ", " << peaks[1].born << ", Min: " << minIndex);
+    LOG4CXX_DEBUG(logger, "Peaks: " << peaks[0].born << ", " << peaks[1].born << ", Min: " << minIndex);
 
     // Set variance as distance from peak to minimum
     this->verticalVariance = abs(minIndex - peaks[0].born);
     this->horizontalVariance = abs(minIndex - peaks[1].born);
 
-    LOG4CXX_DEBUG(this->logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
-    LOG4CXX_DEBUG(this->logger, "Vertical variance: " << this->verticalVariance << ", Horizontal variance: " << this->horizontalVariance);
-
-    system.insertGlobalData(CARTSLAM_KEY_PLANE_PARAMETERS, boost::make_shared<PlaneParameters>(this->horizontalCenter, this->horizontalVariance, this->verticalCenter, this->verticalVariance));
-
-    auto histShared = boost::make_shared<cv::Mat>(boost::move(histogram));
-    system.insertGlobalData(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST, histShared);
+    LOG4CXX_DEBUG(logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
+    LOG4CXX_DEBUG(logger, "Vertical variance: " << this->verticalVariance << ", Horizontal variance: " << this->horizontalVariance);
 }
 
 boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {

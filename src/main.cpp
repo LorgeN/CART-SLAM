@@ -21,15 +21,15 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    // auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
-    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
+    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
+    // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
-    // system->addModule<cart::ZEDImageDisparityModule>();
-    system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
+    system->addModule<cart::ZEDImageDisparityModule>();
+    // system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
     system->addModule<cart::ImageDisparityVisualizationModule>();
 
-    system->addModule<cart::DisparityPlaneSegmentationModule>();
+    system->addModule<cart::DisparityPlaneSegmentationModule>(boost::make_shared<cart::HistogramPeakPlaneParameterProvider>(), 5, 1000);
     system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));

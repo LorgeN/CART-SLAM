@@ -1,10 +1,10 @@
 #include "sources/zed.hpp"
 
+#ifdef CARTSLAM_ZED
 #include <log4cxx/logger.h>
 
 #include <opencv2/cudaimgproc.hpp>
 
-#ifdef CARTSLAM_ZED
 namespace cart::sources {
 const sl::Resolution RES = sl::Resolution(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y);
 
@@ -31,6 +31,10 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(
     if (err != sl::ERROR_CODE::SUCCESS) {
         throw std::runtime_error("Failed to open ZED camera");
     }
+}
+
+ZEDDataSource::~ZEDDataSource() {
+    this->camera->close();
 }
 
 bool ZEDDataSource::hasNext() {
@@ -60,7 +64,7 @@ boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(cv::cuda::Stream& 
         sl::Mat disparityMeasure;
         this->camera->retrieveMeasure(disparityMeasure, sl::MEASURE::DISPARITY, sl::MEM::GPU, RES);
         element->disparityMeasure = slMat2cvGpuMat(disparityMeasure).clone();
-        element->disparityMeasure.convertTo(element->disparityMeasure, CV_16SC1, 16.0, 0, stream);
+        element->disparityMeasure.convertTo(element->disparityMeasure, CV_16SC1, -16.0, 0, stream);
     }
 
     return element;

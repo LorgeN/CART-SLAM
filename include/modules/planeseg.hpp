@@ -62,11 +62,46 @@ typename cv::Scalar planeColor() {
     return cv::Scalar(PlaneColor<P>::b, PlaneColor<P>::g, PlaneColor<P>::r);
 }
 
+class DisparityPlaneSegmentationModule;
 class DisparityPlaneSegmentationVisualizationModule;
+
+class PlaneParameterProvider {
+   public:
+    PlaneParameters getPlaneParameters() const {
+        return PlaneParameters(horizontalCenter, horizontalVariance, verticalCenter, verticalVariance);
+    }
+
+    friend class DisparityPlaneSegmentationModule;
+
+   protected:
+    PlaneParameterProvider(int horizontalCenter, int horizontalVariance, int verticalCenter, int verticalVariance)
+        : horizontalCenter(horizontalCenter), horizontalVariance(horizontalVariance), verticalCenter(verticalCenter), verticalVariance(verticalVariance){};
+        
+    virtual void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) = 0;
+
+    int horizontalCenter;
+    int horizontalVariance;
+    int verticalCenter;
+    int verticalVariance;
+};
+
+class HistogramPeakPlaneParameterProvider : public PlaneParameterProvider {
+   public:
+    HistogramPeakPlaneParameterProvider()
+        : PlaneParameterProvider(0, 0, 0, 0){};
+
+   protected:
+    void updatePlaneParameters(log4cxx::LoggerPtr logger, System& system, SystemRunData& data, cv::Mat& histogram) override;
+};
 
 class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
-    DisparityPlaneSegmentationModule(const int updateInterval = 30) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}), updateInterval(updateInterval){};
+    DisparityPlaneSegmentationModule(
+        boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
+        const int updateInterval = 30, const int resetInterval = 10) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}),
+                                                                       planeParameterProvider(planeParameterProvider),
+                                                                       updateInterval(updateInterval),
+                                                                       resetInterval(resetInterval){};
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -76,16 +111,12 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
     void updatePlaneParameters(System& system, SystemRunData& data);
 
     const int updateInterval;
+    const int resetInterval;
+
+    boost::shared_ptr<PlaneParameterProvider> planeParameterProvider;
 
     boost::shared_mutex derivativeHistogramMutex;
     cv::cuda::GpuMat derivativeHistogram;
-
-    boost::atomic_bool planeParametersUpdated;
-    boost::atomic_uint32_t lastUpdatedFrame;
-    boost::atomic_int32_t horizontalCenter;
-    boost::atomic_int32_t horizontalVariance;
-    boost::atomic_int32_t verticalCenter;
-    boost::atomic_int32_t verticalVariance;
 };
 
 class DisparityPlaneSegmentationVisualizationModule : public SystemModule {

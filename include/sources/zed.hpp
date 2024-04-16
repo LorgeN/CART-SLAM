@@ -12,6 +12,7 @@ namespace cart::sources {
 class ZEDDataSource : public DataSource {
    public:
     ZEDDataSource(std::string path, bool extractDepthMeasure = false);
+    ~ZEDDataSource();
     bool hasNext() override;
     DataElementType getProvidedType() override;
 
@@ -30,6 +31,10 @@ class ZEDDataElement : public StereoDataElement {
     ZEDDataElement(){};
 
     ZEDDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) : StereoDataElement(left, right){};
+
+    // Maintain references to the original ZED images
+    sl::Mat slLeft;
+    sl::Mat slRight;
 
     cv::cuda::GpuMat disparityMeasure;
 };
