@@ -2,9 +2,6 @@
 
 #define CARTSLAM_WORKER_THREADS 16
 
-#define MODULE_NO_RETURN_VALUE std::nullopt
-#define MODULE_RETURN(key, value) std::make_optional(std::make_pair(key, value))
-
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
 #define CARTSLAM_RUN_RETENTION 10
 #define CARTSLAM_CONCURRENT_RUN_LIMIT 6

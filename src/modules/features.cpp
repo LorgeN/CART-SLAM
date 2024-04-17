@@ -2,6 +2,8 @@
 
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include "utils/modules.hpp"
+
 const cv::Ptr<cv::cuda::ORB> orb = cv::cuda::ORB::create(CARTSLAM_OPTION_KEYPOINTS);
 
 namespace cart {

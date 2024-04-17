@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
 
     auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 9), std::make_pair(-3, 3));
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
-    system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 5, 1000);
+    system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
     system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));

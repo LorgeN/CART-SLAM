@@ -6,12 +6,13 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/future.hpp>
+#include <vector>
 
 #define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 20
 
 namespace cart {
 typedef std::pair<std::string, boost::shared_ptr<void>> system_data_pair_t;
-typedef std::optional<system_data_pair_t> system_data_t;
+typedef std::vector<system_data_pair_t> system_data_t;
 
 class DataContainer {
    public:
@@ -29,7 +30,7 @@ class DataContainer {
     boost::shared_ptr<T> getData(const std::string key) {
         boost::unique_lock<boost::mutex> lock(this->dataMutex);
         if (!this->data.count(key)) {
-            throw std::invalid_argument("Could not find key");
+            throw std::invalid_argument("Could not find key \"" + key + "\"");
         }
 
         return boost::static_pointer_cast<T>(this->data[key]);
@@ -37,20 +38,16 @@ class DataContainer {
 
     template <typename T>
     boost::future<boost::shared_ptr<T>> getDataAsync(const std::string key) {
-        boost::packaged_task<boost::shared_ptr<T>> task([this, key] {
-            boost::unique_lock<boost::mutex> lock(this->dataMutex);
-            while (!this->data.count(key)) {
-                LOG4CXX_DEBUG(this->getLogger(), "Waiting for key " << key << " to be available");
-                this->dataCondition.wait(lock);
+        return this->waitForData({key}).then([this, key](boost::future<void> future) {
+            try {
+                future.get();
+            } catch (const boost::exception& e) {
+                LOG4CXX_ERROR(this->getLogger(), "Error while waiting for data: " << boost::diagnostic_information(e));
+                throw;
             }
 
-            LOG4CXX_DEBUG(this->getLogger(), "Key " << key << " is now available");
-            return boost::static_pointer_cast<T>(this->data[key]);
+            return this->getData<T>(key);
         });
-
-        auto future = task.get_future();
-        boost::asio::post(this->getThreadPool(), boost::move(task));
-        return future;
     }
 
     boost::future<void> waitForData(const std::vector<std::string> keys);

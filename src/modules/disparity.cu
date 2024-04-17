@@ -6,6 +6,7 @@
 #include "modules/disparity/interpolation.cuh"
 #include "sources/zed.hpp"
 #include "utils/cuda.cuh"
+#include "utils/modules.hpp"
 
 #define THREADS_PER_BLOCK_X 16
 #define THREADS_PER_BLOCK_Y 16

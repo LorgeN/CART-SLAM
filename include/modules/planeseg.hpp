@@ -10,8 +10,10 @@
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_PLANES "planes"
+#define CARTSLAM_KEY_PLANES_UNSMOOTHED "planes_unsmoothed"
 #define CARTSLAM_KEY_PLANE_PARAMETERS "plane_parameters"
 #define CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST "disp_derivative_histogram"
+#define CARTSLAM_PLANE_COUNT 3
 
 namespace cart {
 struct PlaneParameters {
@@ -25,6 +27,7 @@ struct PlaneParameters {
     const int verticalCenter;
 };
 
+// CARTSLAM_PLANE_COUNT contains the number of planes that we are segmenting
 enum Plane {
     HORIZONTAL = 0,
     VERTICAL = 1,
@@ -106,10 +109,11 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
     DisparityPlaneSegmentationModule(
         boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
-        const int updateInterval = 30, const int resetInterval = 10) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}),
+        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}),
                                                                        planeParameterProvider(planeParameterProvider),
                                                                        updateInterval(updateInterval),
-                                                                       resetInterval(resetInterval){};
+                                                                       resetInterval(resetInterval),
+                                                                       useTemporalSmoothing(useTemporalSmoothing){};
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -118,6 +122,7 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    private:
     void updatePlaneParameters(System& system, SystemRunData& data);
 
+    const bool useTemporalSmoothing;
     const int updateInterval;
     const int resetInterval;
 

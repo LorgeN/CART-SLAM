@@ -42,8 +42,8 @@ void SystemRunData::markAsComplete() {
 }
 
 boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offset) {
-    if (this->id + offset < 0) {
-        throw std::invalid_argument("Index out of range");
+    if (this->id + offset <= 0) {
+        throw std::invalid_argument("Offset " + std::to_string(offset) + " out of range");
     }
 
     if (boost::shared_ptr<System> sys = this->system.lock()) {
@@ -54,14 +54,10 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
 }
 
 boost::future<system_data_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
-    LOG4CXX_DEBUG(this->logger, "Preparing wrapper task");
     boost::packaged_task<system_data_t> task([this, &system, &data] {
+        LOG4CXX_DEBUG(this->logger, "Running module sync wrapper " << std::quoted(this->name));
         auto value = this->runInternal(system, data);
-        LOG4CXX_DEBUG(this->logger, "Sync wrapper: Module " << this->name << " has finished");
-        if (value) {
-            LOG4CXX_DEBUG(this->logger, "Sync wrapper: Module " << this->name << " has data with key " << value->first);
-        }
-
+        LOG4CXX_DEBUG(this->logger, "Sync wrapper of module " << std::quoted(this->name) << " has completed");
         return value;
     });
 
@@ -121,19 +117,20 @@ boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
 }
 
 boost::shared_ptr<SystemRunData> System::getRunById(const uint32_t id) {
-    if (id >= this->runId) {
-        throw std::invalid_argument("Index out of range");
+    if (id > this->runId) {
+        throw std::invalid_argument("Index " + std::to_string(id) + " out of range (too new)");
     }
 
     uint32_t firstElementId;
+    // Offset by 1 because we start at 1 instead of 0
     if (this->runId < CARTSLAM_RUN_RETENTION) {
-        firstElementId = 0;
+        firstElementId = 1;
     } else {
-        firstElementId = this->runId - CARTSLAM_RUN_RETENTION;
+        firstElementId = this->runId - CARTSLAM_RUN_RETENTION + 1;
     }
 
     if (id < firstElementId) {
-        throw std::invalid_argument("Index out of range (too old)");
+        throw std::invalid_argument("Index " + std::to_string(id) + " out of range (too old)");
     }
 
     return this->runs[id - firstElementId];
@@ -194,9 +191,9 @@ boost::future<void> System::run() {
 
             LOG4CXX_INFO(this->logger, "Module " << moduleName << " has completed");
 
-            if (data) {
-                LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data->first) << ". Inserting into run data.");
-                runData->insertData(*data);
+            for (auto data : data) {
+                LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data.first) << " from module " << moduleName);
+                runData->insertData(data);
             }
         }));
     }

@@ -30,8 +30,6 @@ std::vector<Peak> findPeaks(cv::Mat data) {
     std::sort(indices, indices + n, [&data](int a, int b) { return data.at<int>(a) > data.at<int>(b); });
 
     for (auto idx : indices) {
-        std::cout << "idx: " << idx << ", value: " << data.at<int>(idx) << std::endl;
-
         bool lftdone = idx > 0 && idxtopeak[idx - 1] != -1;
         bool rgtdone = idx < n - 1 && idxtopeak[idx + 1] != -1;
 

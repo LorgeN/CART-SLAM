@@ -1,6 +1,7 @@
 #include "modules/optflow.hpp"
 
 #include "utils/colors.hpp"
+#include "utils/modules.hpp"
 
 // Drawing logic borrowed from https://github.com/opencv/opencv_contrib/blob/4.x/modules/cudaoptflow/samples/nvidia_optical_flow.cpp
 
@@ -8,6 +9,7 @@ inline bool isFlowCorrect(cv::Point2f u) {
     return !cvIsNaN(u.x) && !cvIsNaN(u.y) && fabs(u.x) < 1e9 && fabs(u.y) < 1e9;
 }
 
+// TODO: CUDA-ify this
 void drawOpticalFlowInternal(const cv::Mat_<float> &flowx, const cv::Mat_<float> &flowy, cv::Mat &dst, float maxmotion = -1) {
     dst.create(flowx.size(), CV_8UC3);
     dst.setTo(cv::Scalar::all(0));
@@ -50,7 +52,7 @@ cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &str
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_HINT_VECTOR_GRID_SIZE_1,
         false,
         false,
-        true,
+        false,
         0,
         stream,
         stream);
@@ -60,6 +62,7 @@ ImageOpticalFlow detectOpticalFlow(const CARTSLAM_IMAGE_TYPE input, const CARTSL
     cv::cuda::GpuMat flow;
     cv::cuda::GpuMat cost;
 
+    // TODO: Hint from prev frame
     opticalFlow->calc(input, reference, flow, cv::cuda::Stream::Null(), cv::noArray(), cost);
 
     return ImageOpticalFlow(flow, cost);
@@ -89,7 +92,7 @@ cv::Mat drawOpticalFlow(const ImageOpticalFlow &imageFlow, cv::Ptr<cv::cuda::Nvi
 
 system_data_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData &data) {
     if (data.id == 0) {  // First run, no previous data
-        return system_data_pair_t(CARTSLAM_KEY_OPTFLOW, NULL);
+        return MODULE_RETURN(CARTSLAM_KEY_OPTFLOW, boost::shared_ptr<void>());
     }
 
     cv::cuda::Stream stream;
@@ -98,18 +101,14 @@ system_data_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData 
     ImageOpticalFlowVisitor visitor(data, flow, this->logger);
 
     auto result = visitor(data.dataElement);
-    return MODULE_RETURN(CARTSLAM_KEY_OPTFLOW, boost::shared_ptr<void>(boost::move(result)));
+    return MODULE_RETURN_SHARED(CARTSLAM_KEY_OPTFLOW, ImageOpticalFlow, boost::move(result));
 }
 
-void *ImageOpticalFlowVisitor::visitStereo(boost::shared_ptr<StereoDataElement> element) {
+ImageOpticalFlow ImageOpticalFlowVisitor::visitStereo(boost::shared_ptr<StereoDataElement> element) {
     boost::shared_ptr<SystemRunData> previousRun = this->data.getRelativeRun(-1);
     // The previous type of element should be the same as the current one
     boost::shared_ptr<StereoDataElement> previousElement = boost::static_pointer_cast<StereoDataElement>(previousRun->dataElement);
-
-    ImageOpticalFlow flowLeft = detectOpticalFlow(element->left, previousElement->left, this->flow);
-    ImageOpticalFlow flowRight = detectOpticalFlow(element->right, previousElement->right, this->flow);
-
-    return new std::pair<ImageOpticalFlow, ImageOpticalFlow>(flowLeft, flowRight);
+    return detectOpticalFlow(element->left, previousElement->left, this->flow);
 }
 
 boost::future<system_data_t> ImageOpticalFlowVisualizationModule::run(System &system, SystemRunData &data) {
@@ -122,46 +121,14 @@ boost::future<system_data_t> ImageOpticalFlowVisualizationModule::run(System &sy
             return;
         }
 
-        // TODO: Support for none-stereo images
-        boost::shared_ptr<std::pair<ImageOpticalFlow, ImageOpticalFlow>> flows = data.getData<std::pair<ImageOpticalFlow, ImageOpticalFlow>>(CARTSLAM_KEY_OPTFLOW);
+        boost::shared_ptr<ImageOpticalFlow> flow = data.getData<ImageOpticalFlow>(CARTSLAM_KEY_OPTFLOW);
 
         cv::cuda::Stream stream;
         cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(stream);
 
-        cv::Mat flowImageLeft = drawOpticalFlow(flows->first, opticalFlow, stream);
-        cv::Mat flowImageRight = drawOpticalFlow(flows->second, opticalFlow, stream);
+        cv::Mat flowImageLeft = drawOpticalFlow(*flow, opticalFlow, stream);
 
-        cv::Mat images[4];
-        cv::Mat flowImages[2] = {flowImageLeft, flowImageRight};
-
-        boost::shared_ptr<StereoDataElement> element1 = boost::static_pointer_cast<StereoDataElement>(data.dataElement);
-        boost::shared_ptr<StereoDataElement> element2 = boost::static_pointer_cast<StereoDataElement>(data.getRelativeRun(-1)->dataElement);
-
-        element1->left.download(images[0], stream);
-        element1->right.download(images[1], stream);
-        element2->left.download(images[2], stream);
-        element2->right.download(images[3], stream);
-
-        stream.waitForCompletion();
-
-        for (int i = 0; i < 4; i++) {
-            cv::cvtColor(images[i], images[i], cv::COLOR_GRAY2BGR);
-        }
-
-        cv::Mat prevElemConcat;
-        cv::Mat currElemConcat;
-        cv::Mat flowConcat;
-        cv::Mat concatRes;
-
-        cv::hconcat(images[0], images[1], prevElemConcat);
-        cv::hconcat(images[2], images[3], currElemConcat);
-        cv::hconcat(flowImages[0], flowImages[1], flowConcat);
-
-        cv::vconcat(prevElemConcat, currElemConcat, concatRes);
-        cv::vconcat(concatRes, flowConcat, concatRes);
-
-        LOG4CXX_DEBUG(this->logger, "Displaying optical flow visualization");
-        this->imageThread->setImageIfLater(concatRes, data.id);
+        this->imageThread->setImageIfLater(flowImageLeft, data.id);
         promise->set_value(MODULE_NO_RETURN_VALUE);
     });
 

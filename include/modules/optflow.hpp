@@ -44,10 +44,10 @@ class ImageOpticalFlowVisualizationModule : public SystemModule {
     boost::shared_ptr<ImageProvider> imageThread;
 };
 
-class ImageOpticalFlowVisitor : public DataElementVisitor<void *> {
+class ImageOpticalFlowVisitor : public DataElementVisitor<ImageOpticalFlow> {
    public:
     ImageOpticalFlowVisitor(SystemRunData &data, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> &flow, log4cxx::LoggerPtr logger) : data(data), logger(logger), flow(flow){};
-    void *visitStereo(boost::shared_ptr<StereoDataElement> element) override;
+    ImageOpticalFlow visitStereo(boost::shared_ptr<StereoDataElement> element) override;
 
    private:
     SystemRunData &data;
