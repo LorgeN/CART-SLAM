@@ -6,12 +6,24 @@
 
 // OpenCV uses row-major order
 #define INDEX(x, y, rowStep) ((y) * (rowStep) + (x))
-#define INDEX_BGR(x, y, ch, rowStep) ((y) * (rowStep) + (x) * 3 + (ch))
+#define INDEX_CH(x, y, chCount, ch, rowStep) ((y) * (rowStep) + (x) * (chCount) + (ch))
+#define INDEX_BGR(x, y, ch, rowStep) INDEX_CH(x, y, 3, ch, rowStep)
 #define CLAMP(x, a, b) (max((a), min((b), (x))))
 #define SHARED_INDEX(x, y, xPadding, yPadding, rowStep) (((y) + (yPadding)) * ((rowStep) + 2 * (xPadding)) + ((x) + (xPadding)))
 
 #define CUDA_SAFE_CALL(logger, ans) \
     { cart::gpuAssert((logger), (ans), __FILE__, __LINE__); }
+
+/**
+ * @brief Struct for passing arrays of cv::cuda::GpuMats to kernels
+ *
+ * @tparam T Type of the data in the cv::cuda::GpuMat
+ */
+template <typename T>
+struct cv_mat_ptr_t {
+    T *data;
+    size_t step;
+};
 
 template <typename T>
 __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int xBatch, int yBatch, int yPadding, int xPadding, int width, int height) {
@@ -37,6 +49,7 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int xBatc
         }
     }
 
+    // TODO: Some form of 1D interpolation for padding. May have to move that to CPU
     if (yPadding > 0) {
         if (threadIdx.y == 0) {
             // Copy extra rows on top

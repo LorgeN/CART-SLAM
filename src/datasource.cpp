@@ -20,6 +20,17 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
 }
 
 namespace cart {
+CARTSLAM_IMAGE_TYPE getReferenceImage(boost::shared_ptr<DataElement> element) {
+    switch (element->type) {
+        case STEREO: {
+            auto stereoElement = boost::static_pointer_cast<StereoDataElement>(element);
+            return stereoElement->left;
+        } break;
+        default:
+            throw std::runtime_error("Unknown data element type");
+    }
+}
+
 boost::shared_ptr<DataElement> DataSource::getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
     if (!this->hasNext()) {
         throw std::runtime_error("No more elements to read");

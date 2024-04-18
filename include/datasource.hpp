@@ -34,6 +34,8 @@ class StereoDataElement : public DataElement {
     CARTSLAM_IMAGE_TYPE right;
 };
 
+CARTSLAM_IMAGE_TYPE getReferenceImage(boost::shared_ptr<DataElement> element);
+
 template <typename T>
 class DataElementVisitor {
    public:

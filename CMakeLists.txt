@@ -30,7 +30,8 @@ add_executable( cart_slam
     src/modules/features.cpp 
     src/modules/optflow.cpp
     src/modules/disparity.cu
-    src/modules/planeseg.cu
+    src/modules/planeseg/planeseg.cu
+    src/modules/planeseg/planeseg_vis.cu
     src/modules/disparity/interpolation.cu
     src/utils/ui.cpp
     src/utils/data.cpp

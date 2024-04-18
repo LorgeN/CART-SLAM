@@ -1,6 +1,16 @@
 #include "utils/data.hpp"
 
 namespace cart {
+
+const std::vector<std::string> DataContainer::getDataKeys() {
+    boost::unique_lock<boost::mutex> lock(this->dataMutex);
+    std::vector<std::string> keys;
+    for (const auto& pair : this->data) {
+        keys.push_back(pair.first);
+    }
+    return keys;
+}
+
 void DataContainer::insertData(system_data_pair_t data) {
     LOG4CXX_DEBUG(this->getLogger(), "Inserting data with key " << std::quoted(data.first));
     boost::lock_guard<boost::mutex> lock(this->dataMutex);

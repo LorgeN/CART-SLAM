@@ -1,6 +1,24 @@
 #include "utils/ui.hpp"
 
+#include <random>
+
 namespace cart {
+std::vector<cv::Point2i> getRandomPoints(const int count, const cv::Size &size) {
+    std::vector<cv::Point2i> points;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    
+    std::uniform_int_distribution<int> xDist(0, size.width - 1);
+    std::uniform_int_distribution<int> yDist(0, size.height - 1);
+
+    for (int i = 0; i < count; i++) {
+        points.push_back(cv::Point2i(xDist(gen), yDist(gen)));
+    }
+
+    return points;
+}
+
 void ImageThread::appendImageProvider(const boost::weak_ptr<ImageProvider> provider) {
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     auto sharedProvider = provider.lock();

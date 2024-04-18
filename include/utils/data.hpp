@@ -26,6 +26,8 @@ class DataContainer {
 
     bool hasData(const std::string key);
 
+    const std::vector<std::string> getDataKeys();
+
     template <typename T>
     boost::shared_ptr<T> getData(const std::string key) {
         boost::unique_lock<boost::mutex> lock(this->dataMutex);
@@ -46,6 +48,7 @@ class DataContainer {
                 throw;
             }
 
+            LOG4CXX_DEBUG(this->getLogger(), "Data key " << key << " is now available");
             return this->getData<T>(key);
         });
     }

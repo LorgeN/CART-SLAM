@@ -131,7 +131,7 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     boost::shared_ptr<DataSource> dataSource;
     std::vector<boost::shared_ptr<SystemModule>> modules;
     std::vector<boost::shared_ptr<SystemRunData>> runs;
-    boost::mutex runMutex;
-    boost::condition_variable runCondition;
+    boost::shared_mutex runMutex;
+    boost::condition_variable_any runCondition;
 };
 }  // namespace cart

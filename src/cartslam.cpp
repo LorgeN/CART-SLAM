@@ -87,7 +87,7 @@ uint8_t System::getActiveRunCount() {
 }
 
 boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
-    boost::unique_lock<boost::mutex> lock(this->runMutex);
+    boost::unique_lock<boost::shared_mutex> lock(this->runMutex);
     auto previousRunId = this->runId;
 
     boost::shared_ptr<DataElement> element;
@@ -117,18 +117,12 @@ boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
 }
 
 boost::shared_ptr<SystemRunData> System::getRunById(const uint32_t id) {
+    boost::shared_lock_guard<boost::shared_mutex> lock(this->runMutex);
     if (id > this->runId) {
         throw std::invalid_argument("Index " + std::to_string(id) + " out of range (too new)");
     }
 
-    uint32_t firstElementId;
-    // Offset by 1 because we start at 1 instead of 0
-    if (this->runId < CARTSLAM_RUN_RETENTION) {
-        firstElementId = 1;
-    } else {
-        firstElementId = this->runId - CARTSLAM_RUN_RETENTION + 1;
-    }
-
+    uint32_t firstElementId = this->runs[0]->id;
     if (id < firstElementId) {
         throw std::invalid_argument("Index " + std::to_string(id) + " out of range (too old)");
     }
@@ -200,6 +194,7 @@ boost::future<void> System::run() {
 
     LOG4CXX_DEBUG(this->logger, "All modules have been submitted for execution");
     log4cxx::LoggerPtr logger = this->logger;
+
     return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto future) {
         try {
             future.wait();
@@ -209,9 +204,13 @@ boost::future<void> System::run() {
         }
 
         runData->markAsComplete();
-        LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed");
+        LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed. Available data keys: ");
 
-        boost::lock_guard<boost::mutex> lock(this->runMutex);
+        for (auto& data : runData->getDataKeys()) {
+            LOG4CXX_INFO(logger, " - " << std::quoted(data));
+        }
+
+        boost::lock_guard<boost::shared_mutex> lock(this->runMutex);
         this->runCondition.notify_all();
     });
 }

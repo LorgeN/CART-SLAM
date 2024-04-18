@@ -29,9 +29,12 @@
 #define ROUND_TO_INT(x) static_cast<int32_t>(round(x))
 
 typedef int16_t derivative_t;
+typedef int16_t optical_flow_t;
 
 // TODO: Change disparity values to float?
-__global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity, cv::cuda::PtrStepSz<derivative_t> output, cv::cuda::PtrStepSz<int> histogramOutput, int width, int height) {
+__global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity,
+                                     cv::cuda::PtrStepSz<derivative_t> output,
+                                     cv::cuda::PtrStepSz<int> histogramOutput, int width, int height) {
     __shared__ cart::disparity_t sharedDisparity[SHARED_SIZE];
     __shared__ int localHistogram[256];
 
@@ -157,13 +160,13 @@ __global__ void histogramMerge(cv::cuda::PtrStepSz<int> histogram, cv::cuda::Ptr
     atomicAdd(output + channel, sum);
 }
 
-struct PreviousPlaneAssignment {
-    uint8_t* data;
-    size_t step;
-};
-
-__global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv::cuda::PtrStepSz<uint8_t> planes, int width, int height,
-                               cart::PlaneParameters params, cv::cuda::PtrStepSz<uint8_t> smoothedPlanes, PreviousPlaneAssignment* previousPlanes, int previousPlanesCount) {
+__global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
+                               cv::cuda::PtrStepSz<uint8_t> planes,
+                               cart::PlaneParameters params,
+                               cv::cuda::PtrStepSz<uint8_t> smoothedPlanes,
+                               cv_mat_ptr_t<uint8_t>* previousPlanes,
+                               cv_mat_ptr_t<optical_flow_t>* previousOpticalFlow,
+                               int previousPlanesCount) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -181,7 +184,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
-            if (pixelX + j >= width || pixelY + i >= height) {
+            if (pixelX + j >= derivatives.cols || pixelY + i >= derivatives.rows) {
                 continue;
             }
 
@@ -196,8 +199,6 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
 
             planes[INDEX(pixelX + j, pixelY + i, planesRowStep)] = plane;
 
-            // Very naive temporal smoothing, assuming no movement in the image which is usually not the case
-            // TODO: Integrate optical flow
             if (previousPlanesCount <= 0) {
                 continue;
             }
@@ -206,60 +207,32 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives, cv
             votes[plane]++;
 
             for (int k = 0; k < previousPlanesCount; k++) {
-                PreviousPlaneAssignment previousPlane = previousPlanes[k];
-                int previousPlaneValue = previousPlane.data[INDEX(pixelX + j, pixelY + i, previousPlane.step / sizeof(uint8_t))];
+                cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
+                optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(optical_flow_t))];
+                optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(optical_flow_t))];
+
+                // Flow values are in S10.5 format. We are only interested in whole integer values
+                flowX >>= 5;
+                flowY >>= 5;
+
+                int x = pixelX + j - flowX;
+                int y = pixelY + i - flowY;
+                // It is possible for these values to go beyond the image bounds, so we need to check
+                if (x < 0 || y < 0 || x >= derivatives.cols || y >= derivatives.rows) {
+                    continue;
+                }
+
+                cv_mat_ptr_t previousPlane = previousPlanes[k];
+                int previousPlaneValue = previousPlane.data[INDEX(x, y, previousPlane.step / sizeof(uint8_t))];
                 votes[previousPlaneValue]++;
             }
 
-            int max = cart::Plane::UNKNOWN;
-            if (votes[cart::Plane::HORIZONTAL] > votes[max]) {
-                max = cart::Plane::HORIZONTAL;
-            }
-
-            if (votes[cart::Plane::VERTICAL] > votes[max]) {
-                max = cart::Plane::VERTICAL;
+            int max = votes[cart::Plane::HORIZONTAL] > votes[cart::Plane::VERTICAL] ? cart::Plane::HORIZONTAL : cart::Plane::VERTICAL;
+            if (votes[max] == 0) {
+                max = cart::Plane::UNKNOWN;
             }
 
             smoothedPlanes[INDEX(pixelX + j, pixelY + i, planesRowStep)] = max;
-        }
-    }
-}
-
-#define COLOR(plane) cart::PlaneColor<cart::Plane::plane>()
-
-struct plane_colors_t {
-    const int colors[3][3] = {
-        {COLOR(HORIZONTAL).b / 2, COLOR(HORIZONTAL).g / 2, COLOR(HORIZONTAL).r / 2},
-        {COLOR(VERTICAL).b / 2, COLOR(VERTICAL).g / 2, COLOR(VERTICAL).r / 2},
-        {COLOR(UNKNOWN).b / 2, COLOR(UNKNOWN).g / 2, COLOR(UNKNOWN).r / 2}};
-} planeColors;
-
-__global__ void overlayPlanes(cv::cuda::PtrStepSz<uint8_t> image, cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::PtrStepSz<uint8_t> output, int width, int height, plane_colors_t colors) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    int pixelX = x * X_BATCH;
-    int pixelY = y * Y_BATCH;
-
-    size_t outputRowStep = output.step / sizeof(uint8_t);
-    size_t imageRowStep = image.step / sizeof(uint8_t);
-    size_t planesRowStep = planes.step / sizeof(uint8_t);
-
-    for (int i = 0; i < Y_BATCH; i++) {
-        for (int j = 0; j < X_BATCH; j++) {
-            if (pixelX + j >= width || pixelY + i >= height) {
-                continue;
-            }
-
-            uint8_t plane = planes[INDEX(pixelX + j, pixelY + i, planesRowStep)];
-
-            uint8_t b = image[INDEX_BGR(pixelX + j, pixelY + i, 0, imageRowStep)];
-            uint8_t g = image[INDEX_BGR(pixelX + j, pixelY + i, 1, imageRowStep)];
-            uint8_t r = image[INDEX_BGR(pixelX + j, pixelY + i, 2, imageRowStep)];
-
-            output[INDEX_BGR(pixelX + j, pixelY + i, 0, outputRowStep)] = b / 2 + colors.colors[plane][0];
-            output[INDEX_BGR(pixelX + j, pixelY + i, 1, outputRowStep)] = g / 2 + colors.colors[plane][1];
-            output[INDEX_BGR(pixelX + j, pixelY + i, 2, outputRowStep)] = r / 2 + colors.colors[plane][2];
         }
     }
 }
@@ -315,12 +288,19 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
     cv::cuda::GpuMat smoothed;
 
     int previousPlaneCount = 0;
-    PreviousPlaneAssignment* devicePrevPlanes = nullptr;
+    cv_mat_ptr_t<uint8_t>* devicePrevPlanes = nullptr;
+    cv_mat_ptr_t<optical_flow_t>* devicePrevOpticalFlow = nullptr;
 
     if (this->useTemporalSmoothing && data.id > 1) {
+        LOG4CXX_DEBUG(this->logger, "Using temporal smoothing");
         smoothed.create(disparity->size(), CV_8UC1);
 
-        PreviousPlaneAssignment previousPlanesHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE];
+        cv_mat_ptr_t<uint8_t> previousPlanesHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE];
+
+        auto optFlowCurr = data.getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
+
+        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
+                                                                                                   optFlowCurr->flow.step}};
 
         // Copy previous planes to constant memory
         for (int i = 1; i <= CARTSLAM_PLANE_TEMPORAL_DISTANCE; i++) {
@@ -328,21 +308,33 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
                 break;
             }
 
+            LOG4CXX_DEBUG(this->logger, "Getting previous planes from relative run " << (-i) << " (id: " << data.id << ")");
             auto relativeRun = data.getRelativeRun(-i);
             LOG4CXX_DEBUG(this->logger, "Getting previous planes from " << relativeRun->id << " (id: " << data.id << ", i: " << i << ")");
-            
+
             // Block until available
-            auto prev = *relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
+            auto prev = relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
             previousPlanesHost[previousPlaneCount] = {
-                static_cast<uint8_t*>(prev.cudaPtr()),
-                prev.step,
+                static_cast<uint8_t*>(prev->cudaPtr()),
+                prev->step,
             };
 
             previousPlaneCount++;
+
+            if (relativeRun->id > 1 && previousPlaneCount < CARTSLAM_PLANE_TEMPORAL_DISTANCE) {
+                LOG4CXX_DEBUG(this->logger, "Getting optical flow from " << relativeRun->id);
+                auto optFlow = relativeRun->getDataAsync<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW).get();
+                previousOpticalFlowHost[previousPlaneCount] = {
+                    static_cast<optical_flow_t*>(optFlow->flow.cudaPtr()),
+                    optFlow->flow.step};
+            }
         }
 
-        CUDA_SAFE_CALL(this->logger, cudaMalloc(&devicePrevPlanes, previousPlaneCount * sizeof(PreviousPlaneAssignment)));
-        CUDA_SAFE_CALL(this->logger, cudaMemcpy(devicePrevPlanes, previousPlanesHost, previousPlaneCount * sizeof(PreviousPlaneAssignment), cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(this->logger, cudaMalloc(&devicePrevPlanes, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>)));
+        CUDA_SAFE_CALL(this->logger, cudaMemcpy(devicePrevPlanes, previousPlanesHost, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>), cudaMemcpyHostToDevice));
+
+        CUDA_SAFE_CALL(this->logger, cudaMalloc(&devicePrevOpticalFlow, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>)));
+        CUDA_SAFE_CALL(this->logger, cudaMemcpy(devicePrevOpticalFlow, previousOpticalFlowHost, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>), cudaMemcpyHostToDevice));
     }
 
     {
@@ -350,17 +342,25 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
         cudaStreamCreate(&stream);
 
         PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
-        classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, disparity->cols, disparity->rows, params, smoothed, devicePrevPlanes, previousPlaneCount);
+        classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, params, smoothed, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount);
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
     }
 
-    if (devicePrevPlanes != nullptr) {
-        CUDA_SAFE_CALL(this->logger, cudaFree(devicePrevPlanes));
-    }
-
     if (this->useTemporalSmoothing) {
+        if (data.id > 1) {
+            CUDA_SAFE_CALL(this->logger, cudaFree(devicePrevPlanes));
+            CUDA_SAFE_CALL(this->logger, cudaFree(devicePrevOpticalFlow));
+        } else {
+            // Return both as the same, since this is the first run
+            LOG4CXX_DEBUG(this->logger, "Returning planes as both smoothed and unsmoothed");
+            auto ptr = boost::make_shared<cv::cuda::GpuMat>(boost::move(planes));
+            return MODULE_RETURN_ALL(
+                std::make_pair(CARTSLAM_KEY_PLANES, ptr),
+                std::make_pair(CARTSLAM_KEY_PLANES_UNSMOOTHED, ptr));
+        }
+
         return MODULE_RETURN_ALL(
             MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES, cv::cuda::GpuMat, boost::move(smoothed)),
             MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES_UNSMOOTHED, cv::cuda::GpuMat, boost::move(planes)));
@@ -438,90 +438,5 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     LOG4CXX_DEBUG(logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
     LOG4CXX_DEBUG(logger, "Vertical range: " << this->verticalRange.first << " - " << this->verticalRange.second);
     LOG4CXX_DEBUG(logger, "Horizontal range: " << this->horizontalRange.first << " - " << this->horizontalRange.second);
-}
-
-boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
-    auto promise = boost::make_shared<boost::promise<system_data_t>>();
-
-    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto planes = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES);
-
-        if (!planes->empty()) {
-            // Show image
-            boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
-
-            dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-            dim3 numBlocks((planes->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
-                           (planes->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
-
-            cv::cuda::GpuMat output(planes->size(), CV_8UC3);
-            cv::Mat image;
-
-            cv::cuda::Stream cvStream;
-            cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
-
-            overlayPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(stereoData->left, *planes, output, planes->cols, planes->rows, planeColors);
-            CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
-
-            output.download(image, cvStream);
-            CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
-
-            this->imageThread->setImageIfLater(image, data.id);
-        }
-
-        if (!system.hasData(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST)) {
-            promise->set_value(MODULE_NO_RETURN_VALUE);
-            return;
-        }
-
-        auto histSource = system.getData<cv::Mat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST);
-
-        int histSize = 256;
-        int hist_w = 1024, hist_h = 800;
-        int bin_w = cvRound((double)hist_w / histSize);
-
-        cv::Mat histImage(hist_h, hist_w, CV_8UC3, cv::Scalar(0, 0, 0));
-
-        cv::Mat hist;
-        cv::normalize(*histSource, hist, 0, histImage.rows - 20, cv::NORM_MINMAX, -1);
-
-        if (system.hasData(CARTSLAM_KEY_PLANE_PARAMETERS)) {
-            LOG4CXX_DEBUG(this->logger, "Drawing plane parameters");
-            auto parameters = system.getData<PlaneParameters>(CARTSLAM_KEY_PLANE_PARAMETERS);
-
-            cv::circle(histImage, cv::Point((parameters->horizontalCenter + 128) * bin_w, hist_h - 5), 3, planeColor<Plane::HORIZONTAL>(), -1);
-            cv::circle(histImage, cv::Point((parameters->verticalCenter + 128) * bin_w, hist_h - 5), 3, planeColor<Plane::VERTICAL>(), -1);
-
-            int horizStart = parameters->horizontalRange.first + 128;
-            int horizEnd = parameters->horizontalRange.second + 128;
-            int vertStart = parameters->verticalRange.first + 128;
-            int vertEnd = parameters->verticalRange.second + 128;
-
-            for (int i = 1; i < histSize; i++) {
-                cv::Scalar color = planeColor<Plane::UNKNOWN>();
-                if (i >= horizStart && i < horizEnd) {
-                    color = planeColor<Plane::HORIZONTAL>();
-                } else if (i >= vertStart && i < vertEnd) {
-                    color = planeColor<Plane::VERTICAL>();
-                }
-
-                cv::line(histImage, cv::Point(bin_w * (i - 1), hist_h - hist.at<int>(i - 1)),
-                         cv::Point(bin_w * (i), hist_h - cvRound(hist.at<int>(i))),
-                         color, 2, 8, 0);
-            }
-        } else {
-            for (int i = 1; i < histSize; i++) {
-                cv::line(histImage, cv::Point(bin_w * (i - 1), hist_h - hist.at<int>(i - 1)),
-                         cv::Point(bin_w * (i), hist_h - cvRound(hist.at<int>(i))),
-                         cv::Scalar(255, 0, 0), 2, 8, 0);
-            }
-        }
-
-        this->histThread->setImageIfLater(histImage, data.id);
-
-        promise->set_value(MODULE_NO_RETURN_VALUE);
-    });
-
-    return promise->get_future();
 }
 }  // namespace cart

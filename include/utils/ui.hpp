@@ -8,6 +8,8 @@
 #include "../logging.hpp"
 
 namespace cart {
+std::vector<cv::Point2i> getRandomPoints(const int count, const cv::Size &size);
+
 class ImageProvider;
 
 class ImageThread {

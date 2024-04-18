@@ -21,30 +21,36 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
-    // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
+    // auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
+    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
-    system->addModule<cart::ZEDImageDisparityModule>();
-    // system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
-    system->addModule<cart::ImageDisparityVisualizationModule>();
+    system->addModule<cart::ImageOpticalFlowModule>();
+    // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
-    auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 9), std::make_pair(-3, 3));
-    // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
+    // system->addModule<cart::ZEDImageDisparityModule>();
+    system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
+    // system->addModule<cart::ImageDisparityVisualizationModule>();
+
+    // auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 9), std::make_pair(-3, 3));
+    auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>();
+    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
 
-    // system.addModule(new cart::ImageOpticalFlowModule());
-    // system.addModule(new cart::ImageOpticalFlowVisualizationModule());
+    if (!dataSource->hasNext()) {
+        LOG4CXX_WARN(cart::getLogger("main"), "The provided data source has no data. Exiting.");
+        return 1;
+    }
 
     CARTSLAM_START_AVERAGE_TIMING(system);
 
     boost::future<void> last;
 
     while (dataSource->hasNext()) {
+        // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
         last = system->run();

@@ -7,6 +7,7 @@
 
 #include "cartslam.hpp"
 #include "modules/disparity.hpp"
+#include "modules/optflow.hpp"
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_PLANES "planes"
@@ -109,11 +110,13 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
     DisparityPlaneSegmentationModule(
         boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
-        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false) : SyncWrapperSystemModule("PlaneSegmentation", {CARTSLAM_KEY_DISPARITY}),
-                                                                       planeParameterProvider(planeParameterProvider),
-                                                                       updateInterval(updateInterval),
-                                                                       resetInterval(resetInterval),
-                                                                       useTemporalSmoothing(useTemporalSmoothing){};
+        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false)
+        // Need optical flow for temporal smoothing
+        : SyncWrapperSystemModule("PlaneSegmentation", useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_DISPARITY, CARTSLAM_KEY_OPTFLOW} : std::vector<std::string>{CARTSLAM_KEY_DISPARITY}),
+          planeParameterProvider(planeParameterProvider),
+          updateInterval(updateInterval),
+          resetInterval(resetInterval),
+          useTemporalSmoothing(useTemporalSmoothing){};
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -134,7 +137,8 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
 
 class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
    public:
-    DisparityPlaneSegmentationVisualizationModule() : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}) {
+    DisparityPlaneSegmentationVisualizationModule(bool showHistogram = true, bool showStacked = true) 
+    : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}), showHistogram(showHistogram), showStacked(showStacked){
         this->imageThread = ImageProvider::create("Plane Segmentation");
         this->histThread = ImageProvider::create("Plane Segmentation Histogram");
     };
@@ -142,6 +146,9 @@ class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
     boost::future<system_data_t> run(System& system, SystemRunData& data) override;
 
    private:
+    const bool showHistogram;
+    const bool showStacked;
+
     boost::shared_ptr<ImageProvider> imageThread;
     boost::shared_ptr<ImageProvider> histThread;
 };
