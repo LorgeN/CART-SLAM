@@ -20,7 +20,7 @@ void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
 }
 
 namespace cart {
-CARTSLAM_IMAGE_TYPE getReferenceImage(boost::shared_ptr<DataElement> element) {
+image_t getReferenceImage(boost::shared_ptr<DataElement> element) {
     switch (element->type) {
         case STEREO: {
             auto stereoElement = boost::static_pointer_cast<StereoDataElement>(element);

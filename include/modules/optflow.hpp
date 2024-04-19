@@ -29,8 +29,8 @@ class ImageOpticalFlowModule : public SyncWrapperSystemModule {
 
    private:
     image_optical_flow_t detectOpticalFlow(
-        const CARTSLAM_IMAGE_TYPE input,
-        const CARTSLAM_IMAGE_TYPE reference,
+        const image_t input,
+        const image_t reference,
         cv::InputArray hint,
         cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow,
         cv::cuda::Stream &stream);

@@ -24,9 +24,9 @@ class ImageFeatures {
     cv::cuda::GpuMat descriptors;
 };
 
-typedef std::function<ImageFeatures(const CARTSLAM_IMAGE_TYPE, cv::cuda::Stream&, log4cxx::LoggerPtr)> FeatureDetector;
+typedef std::function<ImageFeatures(const image_t, cv::cuda::Stream&, log4cxx::LoggerPtr)> FeatureDetector;
 
-ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream& stream, log4cxx::LoggerPtr logger);
+ImageFeatures detectOrbFeatures(const image_t image, cv::cuda::Stream& stream, log4cxx::LoggerPtr logger);
 
 class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
    public:

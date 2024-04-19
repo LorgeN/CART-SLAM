@@ -38,7 +38,7 @@ class ZEDDataElement : public StereoDataElement {
    public:
     ZEDDataElement(){};
 
-    ZEDDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) : StereoDataElement(left, right){};
+    ZEDDataElement(image_t left, image_t right) : StereoDataElement(left, right){};
 
     cv::cuda::GpuMat disparityMeasure;
 };

@@ -5,11 +5,12 @@
 #include <boost/thread.hpp>
 #include <opencv2/opencv.hpp>
 
-#define CARTSLAM_IMAGE_TYPE cv::cuda::GpuMat
 #define CARTSLAM_IMAGE_RES_X 1280
 #define CARTSLAM_IMAGE_RES_Y 384
 
 namespace cart {
+typedef cv::cuda::GpuMat image_t;
+
 enum DataElementType {
     STEREO
 };
@@ -27,14 +28,14 @@ class StereoDataElement : public DataElement {
    public:
     StereoDataElement() : DataElement(DataElementType::STEREO){};
 
-    StereoDataElement(CARTSLAM_IMAGE_TYPE left, CARTSLAM_IMAGE_TYPE right) : DataElement(DataElementType::STEREO), left(left), right(right){};
+    StereoDataElement(image_t left, image_t right) : DataElement(DataElementType::STEREO), left(left), right(right){};
 
     // TODO: Redefine type so that it is moved to CPU when the run finishes
-    CARTSLAM_IMAGE_TYPE left;
-    CARTSLAM_IMAGE_TYPE right;
+    image_t left;
+    image_t right;
 };
 
-CARTSLAM_IMAGE_TYPE getReferenceImage(boost::shared_ptr<DataElement> element);
+image_t getReferenceImage(boost::shared_ptr<DataElement> element);
 
 template <typename T>
 class DataElementVisitor {

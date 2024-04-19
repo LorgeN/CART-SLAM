@@ -7,6 +7,7 @@
 #include "cartslam.hpp"
 #include "datasource.hpp"
 #include "utils/ui.hpp"
+#include "modules/disparity/interpolation.cuh"  
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
 

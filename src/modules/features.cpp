@@ -54,7 +54,7 @@ boost::future<system_data_t> ImageFeatureVisualizationModule::run(System &system
     return promise->get_future();
 }
 
-ImageFeatures detectOrbFeatures(const CARTSLAM_IMAGE_TYPE image, cv::cuda::Stream &stream, log4cxx::LoggerPtr logger) {
+ImageFeatures detectOrbFeatures(const image_t image, cv::cuda::Stream &stream, log4cxx::LoggerPtr logger) {
     cv::cuda::GpuMat descriptors;
     cv::cuda::GpuMat keypoints;
 
