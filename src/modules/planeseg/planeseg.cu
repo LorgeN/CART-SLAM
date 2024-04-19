@@ -60,6 +60,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     __syncthreads();
 
     // Perform vertical low pass filter
+    // TODO: Evaluate if this is really necessary
     for (int j = 0; j < X_BATCH; j++) {
         // Sliding window sum
         derivative_t sum = 0;
@@ -206,6 +207,10 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
             int votes[CARTSLAM_PLANE_COUNT] = {0};
             votes[plane]++;
 
+            // Need to be signed ints because we can go negative
+            int x = pixelX + j;
+            int y = pixelY + i;
+
             for (int k = 0; k < previousPlanesCount; k++) {
                 cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
                 optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(optical_flow_t))];
@@ -215,8 +220,11 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
                 flowX >>= 5;
                 flowY >>= 5;
 
-                int x = pixelX + j - flowX;
-                int y = pixelY + i - flowY;
+                // We subtract the flow values to get the previous pixel position. For each opt flow matrix, these reference the previous frame,
+                // so we need to subtract all the flow values between current and the target frame to get the right position
+                x -= flowX;
+                y -= flowY;
+
                 // It is possible for these values to go beyond the image bounds, so we need to check
                 if (x < 0 || y < 0 || x >= derivatives.cols || y >= derivatives.rows) {
                     continue;
@@ -227,6 +235,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
                 votes[previousPlaneValue]++;
             }
 
+            // Find the plane with the most votes, or unknown if there are no votes
             int max = votes[cart::Plane::HORIZONTAL] > votes[cart::Plane::VERTICAL] ? cart::Plane::HORIZONTAL : cart::Plane::VERTICAL;
             if (votes[max] == 0) {
                 max = cart::Plane::UNKNOWN;
