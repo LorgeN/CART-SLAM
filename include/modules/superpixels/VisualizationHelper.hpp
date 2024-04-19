@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Contour-relaxed Superpixels.  If not, see <http://www.gnu.org/licenses/>.
 
-
 #pragma once
 
 /**
@@ -25,7 +24,6 @@
 
 #include <opencv2/opencv.hpp>
 #include <vector>
-
 
 /**
  * @brief Create a boundary overlay, that is: mark the label boundaries in the given color image by making them red.
@@ -40,34 +38,30 @@
  * ::computeBoundaryImage to identify boundary pixels, and just marking those in red.
  */
 template <typename TLabelImage>
-void computeBoundaryOverlay(cv::Mat const& bgrImage, cv::Mat const& labelImage, cv::Mat& out_boundaryOverlay)
-{
+void computeBoundaryOverlay(cv::Mat const& bgrImage, cv::Mat const& labelImage, cv::Mat& out_boundaryOverlay) {
     std::vector<cv::Mat> overlayChannels;
     cv::split(bgrImage, overlayChannels);
 
-    for (int row = 0; row < labelImage.rows-1; ++row)
-    {
+    for (int row = 0; row < labelImage.rows - 1; ++row) {
         TLabelImage const* const labelImageUpperRowPtr = labelImage.ptr<TLabelImage>(row);
-        TLabelImage const* const labelImageLowerRowPtr = labelImage.ptr<TLabelImage>(row+1);
+        TLabelImage const* const labelImageLowerRowPtr = labelImage.ptr<TLabelImage>(row + 1);
         unsigned char* const outBoundaryImageUpperRowPtrB = overlayChannels[0].ptr<unsigned char>(row);
-        unsigned char* const outBoundaryImageLowerRowPtrB = overlayChannels[0].ptr<unsigned char>(row+1);
+        unsigned char* const outBoundaryImageLowerRowPtrB = overlayChannels[0].ptr<unsigned char>(row + 1);
         unsigned char* const outBoundaryImageUpperRowPtrG = overlayChannels[1].ptr<unsigned char>(row);
-        unsigned char* const outBoundaryImageLowerRowPtrG = overlayChannels[1].ptr<unsigned char>(row+1);
+        unsigned char* const outBoundaryImageLowerRowPtrG = overlayChannels[1].ptr<unsigned char>(row + 1);
         unsigned char* const outBoundaryImageUpperRowPtrR = overlayChannels[2].ptr<unsigned char>(row);
-        unsigned char* const outBoundaryImageLowerRowPtrR = overlayChannels[2].ptr<unsigned char>(row+1);
+        unsigned char* const outBoundaryImageLowerRowPtrR = overlayChannels[2].ptr<unsigned char>(row + 1);
 
-        for (int col = 0; col < labelImage.cols-1; ++col)
-        {
-
-            if (labelImageUpperRowPtr[col] != labelImageUpperRowPtr[col+1]){
+        for (int col = 0; col < labelImage.cols - 1; ++col) {
+            if (labelImageUpperRowPtr[col] != labelImageUpperRowPtr[col + 1]) {
                 outBoundaryImageUpperRowPtrB[col] = 0;
-                outBoundaryImageUpperRowPtrB[col+1] = 0;
+                outBoundaryImageUpperRowPtrB[col + 1] = 0;
                 outBoundaryImageUpperRowPtrG[col] = 0;
-                outBoundaryImageUpperRowPtrG[col+1] = 0;
+                outBoundaryImageUpperRowPtrG[col + 1] = 0;
                 outBoundaryImageUpperRowPtrR[col] = 255;
-                outBoundaryImageUpperRowPtrR[col+1] = 255;
+                outBoundaryImageUpperRowPtrR[col + 1] = 255;
             }
-            if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col]){
+            if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col]) {
                 outBoundaryImageUpperRowPtrB[col] = 0;
                 outBoundaryImageLowerRowPtrB[col] = 0;
                 outBoundaryImageUpperRowPtrG[col] = 0;
@@ -81,7 +75,6 @@ void computeBoundaryOverlay(cv::Mat const& bgrImage, cv::Mat const& labelImage, 
     cv::merge(overlayChannels, out_boundaryOverlay);
 }
 
-
 /**
  * @brief Compute a binary boundary image, containing 1 for pixels on a label boundary, 0 otherwise.
  * @param labelImage the label image, contains one label identifier per pixel
@@ -91,8 +84,7 @@ void computeBoundaryOverlay(cv::Mat const& bgrImage, cv::Mat const& labelImage, 
  * (with 2 pixel-wide boundaries) which can be used e.g. for benchmarks.
  */
 template <typename TLabelImage>
-void computeBoundaryImage(cv::Mat const& labelImage, cv::Mat& out_boundaryImage)
-{
+void computeBoundaryImage(cv::Mat const& labelImage, cv::Mat& out_boundaryImage) {
     assert(labelImage.type() == cv::DataType<TLabelImage>::type);
 
     // Initialize (or reset) boundary map with zeros.
@@ -100,8 +92,7 @@ void computeBoundaryImage(cv::Mat const& labelImage, cv::Mat& out_boundaryImage)
 
     // For each pixel, compare with neighbors. If different label, set both to 1 (= boundary pixel).
     // Compare only half of the neighbors, the other half will be compared when they themselves are the current pixel.
-    for (int row = 0; row < labelImage.rows; ++row)
-    {
+    for (int row = 0; row < labelImage.rows; ++row) {
         TLabelImage const* const labelImageUpperRowPtr = labelImage.ptr<TLabelImage>(row);
         unsigned char* const boundaryImageUpperRowPtr = tmpBoundaryMap.ptr<unsigned char>(row);
 
@@ -111,57 +102,46 @@ void computeBoundaryImage(cv::Mat const& labelImage, cv::Mat& out_boundaryImage)
         // Check whether we have one more row downwards.
         // We can only get the row pointers to that row if it exists, obviously.
         bool canLookDown = false;
-        if (row < labelImage.rows - 1)
-        {
+        if (row < labelImage.rows - 1) {
             labelImageLowerRowPtr = labelImage.ptr<TLabelImage>(row + 1);
             boundaryImageLowerRowPtr = tmpBoundaryMap.ptr<unsigned char>(row + 1);
             canLookDown = true;
         }
 
-        for (int col = 0; col < labelImage.cols; ++col)
-        {
+        for (int col = 0; col < labelImage.cols; ++col) {
             // Check whether we have one more column to the right.
             bool canLookRight = false;
-            if (col < labelImage.cols - 1)
-            {
+            if (col < labelImage.cols - 1) {
                 canLookRight = true;
             }
 
             // Neighbor to the right.
-            if (canLookRight)
-            {
-                if (labelImageUpperRowPtr[col] != labelImageUpperRowPtr[col + 1])
-                {
+            if (canLookRight) {
+                if (labelImageUpperRowPtr[col] != labelImageUpperRowPtr[col + 1]) {
                     boundaryImageUpperRowPtr[col] = 1;
                     boundaryImageUpperRowPtr[col + 1] = 1;
                 }
             }
 
             // Neighbor to the bottom.
-            if (canLookDown)
-            {
-                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col])
-                {
+            if (canLookDown) {
+                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col]) {
                     boundaryImageUpperRowPtr[col] = 1;
                     boundaryImageLowerRowPtr[col] = 1;
                 }
             }
 
             // Neighbor to the bottom right.
-            if (canLookDown && canLookRight)
-            {
-                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col + 1])
-                {
+            if (canLookDown && canLookRight) {
+                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col + 1]) {
                     boundaryImageUpperRowPtr[col] = 1;
                     boundaryImageLowerRowPtr[col + 1] = 1;
                 }
             }
 
             // Neighbor to the bottom left.
-            if (canLookDown && col > 0)
-            {
-                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col - 1])
-                {
+            if (canLookDown && col > 0) {
+                if (labelImageUpperRowPtr[col] != labelImageLowerRowPtr[col - 1]) {
                     boundaryImageUpperRowPtr[col] = 1;
                     boundaryImageLowerRowPtr[col - 1] = 1;
                 }
@@ -169,6 +149,6 @@ void computeBoundaryImage(cv::Mat const& labelImage, cv::Mat& out_boundaryImage)
         }
     }
 
-//     out_boundaryImage = tmpBoundaryMap > 0;
+    //     out_boundaryImage = tmpBoundaryMap > 0;
     tmpBoundaryMap.copyTo(out_boundaryImage);
 }

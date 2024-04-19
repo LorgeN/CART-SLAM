@@ -20,8 +20,8 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "IFeature.h"
-#include "LabelStatisticsGauss.h"
+#include "../LabelStatisticsGauss.hpp"
+#include "IFeature.hpp"
 
 /**
  * @class CompactnessFeature

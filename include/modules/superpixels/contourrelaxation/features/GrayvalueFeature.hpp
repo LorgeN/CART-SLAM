@@ -20,10 +20,10 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "AGaussianFeature.h"
-#include "IFeature.h"
-#include "LabelStatisticsGauss.h"
-#include "globalConstants.h"
+#include "../LabelStatisticsGauss.hpp"
+#include "../globalConstants.hpp"
+#include "AGaussianFeature.hpp"
+#include "IFeature.hpp"
 
 /**
  * @class GrayvalueFeature

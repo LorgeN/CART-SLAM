@@ -1,3 +1,6 @@
+This folder contains a modified version of the "Contour-Relaxed Superpixels" implementation provided by Rudolf Mester. 
+Please find below the original README of the project.
+
 ---
 
 Contour-relaxed Superpixels

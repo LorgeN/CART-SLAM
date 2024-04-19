@@ -26,11 +26,11 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "ColorFeature.h"
-#include "CompactnessFeature.h"
-#include "FeatureType.h"
-#include "GrayvalueFeature.h"
-#include "TraversionGenerator.h"
+#include "features/ColorFeature.hpp"
+#include "features/CompactnessFeature.hpp"
+#include "features/FeatureType.hpp"
+#include "features/GrayvalueFeature.hpp"
+#include "TraversionGenerator.hpp"
 
 /**
  * @class ContourRelaxation

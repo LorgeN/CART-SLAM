@@ -15,14 +15,12 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Contour-relaxed Superpixels.  If not, see <http://www.gnu.org/licenses/>.
 
-
 #pragma once
 
 /**
  * @file globalConstants.h
  * @brief Header file containing some global constant definitions.
  */
-
 
 /**
  * @brief The threshold for minimum variance.

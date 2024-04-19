@@ -20,9 +20,9 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "IFeature.h"
-#include "LabelStatisticsGauss.h"
-#include "globalConstants.h"
+#include "../LabelStatisticsGauss.hpp"
+#include "../globalConstants.hpp"
+#include "IFeature.hpp"
 
 /**
  * @class AGaussianFeature

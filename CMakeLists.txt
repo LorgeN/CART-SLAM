@@ -33,6 +33,8 @@ add_executable( cart_slam
     src/modules/disparity/interpolation.cu
     src/modules/planeseg/planeseg.cu
     src/modules/planeseg/planeseg_vis.cu
+    src/modules/superpixels.cpp
+    src/modules/superpixels/contourrelaxation/TraversionGenerator.cpp
     src/utils/ui.cpp
     src/utils/data.cpp
     src/utils/colors.cpp
