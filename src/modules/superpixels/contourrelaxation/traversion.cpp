@@ -1,5 +1,6 @@
-#include "modules/superpixels/contourrelaxation/TraversionGenerator.hpp"
+#include "modules/superpixels/contourrelaxation/traversion.hpp"
 
+namespace cart::contour {
 /**
  * @brief Set the image size and reset all counters to start values, get the first coordinates.
  * @param imageSize the size of the image to be traversed
@@ -116,3 +117,4 @@ cv::Point2i TraversionGenerator::end() const {
     // and which will be used to signal the end of the traversion to the calling function.
     return cv::Point2i(-1, -1);
 }
+}  // namespace cart::contour

@@ -17,6 +17,7 @@
 
 #pragma once
 
+namespace cart::contour {
 /**
  * @file FeatureType.h
  * @brief Header file containing the definition of the FeatureType enum.
@@ -31,3 +32,4 @@ enum FeatureType {
     Color,
     Compactness
 };
+}  // namespace cart::contour

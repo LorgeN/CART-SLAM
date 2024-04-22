@@ -19,11 +19,13 @@
 
 #include <opencv2/opencv.hpp>
 
+#include "../constants.hpp"
+
+namespace cart::contour {
 /**
  * @class IFeature
  * @brief Interface for feature classes. Defines the functions a feature class must implement so that it can be used in the Contour Relaxation framework.
  */
-template <typename TLabelImage>
 class IFeature {
    public:
     /**
@@ -46,8 +48,8 @@ class IFeature {
      * @return total negative log-likelihood (or cost) of all labels in the neighbourhood, assuming the label change
      */
     virtual double calculateCost(cv::Point2i const& curPixelCoords,
-                                 TLabelImage const& oldLabel, TLabelImage const& pretendLabel,
-                                 std::vector<TLabelImage> const& neighbourLabels) const = 0;
+                                 label_t const& oldLabel, label_t const& pretendLabel,
+                                 std::vector<label_t> const& neighbourLabels) const = 0;
 
     /**
      * @brief Update the saved label statistics to reflect a label change of the given pixel.
@@ -55,5 +57,6 @@ class IFeature {
      * @param oldLabel old label of the changing pixel
      * @param newLabel new label of the changing pixel
      */
-    virtual void updateStatistics(cv::Point2i const& curPixelCoords, TLabelImage const& oldLabel, TLabelImage const& newLabel) = 0;
+    virtual void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) = 0;
 };
+}  // namespace cart::contour

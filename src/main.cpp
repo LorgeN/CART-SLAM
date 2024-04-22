@@ -57,13 +57,13 @@ int main(int argc, char* argv[]) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
-        last = system->run();
+        system->run().wait();
 
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
-    last.wait();
+    //last.wait();
 
     system->getThreadPool().join();
 

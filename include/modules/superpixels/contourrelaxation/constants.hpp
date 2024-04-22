@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include "../../../logging.hpp"
+
+namespace cart::contour {
 /**
  * @file globalConstants.h
  * @brief Header file containing some global constant definitions.
@@ -30,3 +33,8 @@
  * results much, so this is not needed as a parameter.
  */
 double const featuresMinVariance = 1.0 / 12.0;
+
+const log4cxx::LoggerPtr logger = cart::getLogger("ContourRelaxation");
+
+typedef uint16_t label_t;
+}  // namespace cart::contour

@@ -4,7 +4,7 @@
 
 #include "cartslam.hpp"
 #include "datasource.hpp"
-#include "modules/superpixels/contourrelaxation/ContourRelaxation.hpp"
+#include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_SUPERPIXELS "superpixels"
@@ -27,8 +27,6 @@ struct image_super_pixels_t {
     cv::Mat regionMeanImage;
 };
 
-typedef uint16_t super_pixel_label_t;
-
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
@@ -41,7 +39,7 @@ class SuperPixelModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System &system, SystemRunData &data) override;
 
    private:
-    boost::shared_ptr<ContourRelaxation<super_pixel_label_t>> contourRelaxation;
+    boost::shared_ptr<contour::ContourRelaxation> contourRelaxation;
 
     const unsigned int numIterations;
     const unsigned int blockWidth;

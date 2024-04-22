@@ -17,31 +17,69 @@
 
 #pragma once
 
+#include <boost/cstdint.hpp>
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "../LabelStatisticsGauss.hpp"
-#include "../globalConstants.hpp"
-#include "IFeature.hpp"
+#include "../constants.hpp"
+#include "ifeature.hpp"
+
+namespace cart::contour {
+
+/**
+ * @struct LabelStatisticsGauss
+ * @brief Struct containing the sufficient statistics needed to compute label likelihoods of a Gaussian-distributed feature channel.
+ */
+struct LabelStatisticsGauss {
+    boost::uint_fast32_t pixelCount;  ///< the number of pixels assigned to the label
+    double valueSum;                  ///< the sum of values of all pixels assigned to the label
+    double squareValueSum;            ///< the sum of squared values of all pixels assigned to the label
+
+    /**
+     * @brief Default constructor to ensure that all members are initialized to sensible values.
+     */
+    LabelStatisticsGauss() : pixelCount(0), valueSum(0), squareValueSum(0) {}
+};
 
 /**
  * @class AGaussianFeature
  * @brief Abstract feature class providing the basic functionality needed for all features with Gaussian distribution.
  */
-template <typename TLabelImage>
-class AGaussianFeature : public IFeature<TLabelImage> {
+class AGaussianFeature : public IFeature {
    protected:
+    /**
+     * @brief Update label statistics of a Gaussian distribution to reflect a label change of the given pixel.
+     * @param curPixelCoords coordinates of the pixel whose label changes
+     * @param labelStatsOldLabel statistics of the old label of the changing pixel (will be updated)
+     * @param labelStatsNewLabel statistics of the new label of the changing pixel (will be updated)
+     * @param data observed data of the distribution whose statistics are being modelled
+     */
     template <typename TData>
     void updateGaussianStatistics(cv::Point2i const& curPixelCoords, LabelStatisticsGauss& labelStatsOldLabel,
                                   LabelStatisticsGauss& labelStatsNewLabel, cv::Mat const& data) const;
 
+    /**
+     * @brief Estimate the statistics of a Gaussian distribution for each label on the given observed data.
+     * @param labelImage contains the label identifier to which each pixel is assigned
+     * @param data observed data of the Gaussian distributions
+     * @param out_labelStatistics will be created and contain the label statistics of all labels in labelImage
+     */
     template <typename TData>
     void initializeGaussianStatistics(cv::Mat const& labelImage, cv::Mat const& data,
                                       std::vector<LabelStatisticsGauss>& out_labelStatistics) const;
-
+    /**
+     * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.
+     * @param curPixelCoords coordinates of the regarded pixel
+     * @param oldLabel old label of the regarded pixel
+     * @param pretendLabel assumed new label of the regarded pixel
+     * @param neighbourLabels all labels found in the 8-neighbourhood of the regarded pixel, including the old label of the pixel itself
+     * @param labelStatistics label statistics of all labels in the image
+     * @param data observed data of the modelled Gaussian distributions
+     * @return total negative log-likelihood (or cost) of all labels in the neighbourhood, assuming the label change
+     */
     template <typename TData>
     double calculateGaussianCost(cv::Point2i const& curPixelCoords,
-                                 TLabelImage const& oldLabel, TLabelImage const& pretendLabel, std::vector<TLabelImage> const& neighbourLabels,
+                                 label_t const& oldLabel, label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels,
                                  std::vector<LabelStatisticsGauss> const& labelStatistics, cv::Mat const& data) const;
 
    public:
@@ -51,17 +89,9 @@ class AGaussianFeature : public IFeature<TLabelImage> {
     virtual ~AGaussianFeature() {}
 };
 
-/**
- * @brief Update label statistics of a Gaussian distribution to reflect a label change of the given pixel.
- * @param curPixelCoords coordinates of the pixel whose label changes
- * @param labelStatsOldLabel statistics of the old label of the changing pixel (will be updated)
- * @param labelStatsNewLabel statistics of the new label of the changing pixel (will be updated)
- * @param data observed data of the distribution whose statistics are being modelled
- */
-template <typename TLabelImage>
 template <typename TData>
-void AGaussianFeature<TLabelImage>::updateGaussianStatistics(cv::Point2i const& curPixelCoords,
-                                                             LabelStatisticsGauss& labelStatsOldLabel, LabelStatisticsGauss& labelStatsNewLabel, cv::Mat const& data) const {
+void AGaussianFeature::updateGaussianStatistics(cv::Point2i const& curPixelCoords,
+                                                LabelStatisticsGauss& labelStatsOldLabel, LabelStatisticsGauss& labelStatsNewLabel, cv::Mat const& data) const {
     assert(curPixelCoords.inside(cv::Rect(0, 0, data.cols, data.rows)));
     assert(data.type() == cv::DataType<TData>::type);
 
@@ -78,25 +108,18 @@ void AGaussianFeature<TLabelImage>::updateGaussianStatistics(cv::Point2i const& 
     labelStatsNewLabel.squareValueSum += pow(static_cast<double>(data.at<TData>(curPixelCoords)), 2.0);
 }
 
-/**
- * @brief Estimate the statistics of a Gaussian distribution for each label on the given observed data.
- * @param labelImage contains the label identifier to which each pixel is assigned
- * @param data observed data of the Gaussian distributions
- * @param out_labelStatistics will be created and contain the label statistics of all labels in labelImage
- */
-template <typename TLabelImage>
 template <typename TData>
-void AGaussianFeature<TLabelImage>::initializeGaussianStatistics(cv::Mat const& labelImage, cv::Mat const& data,
-                                                                 std::vector<LabelStatisticsGauss>& out_labelStatistics) const {
+void AGaussianFeature::initializeGaussianStatistics(cv::Mat const& labelImage, cv::Mat const& data,
+                                                    std::vector<LabelStatisticsGauss>& out_labelStatistics) const {
     assert(labelImage.size() == data.size());
-    assert(labelImage.type() == cv::DataType<TLabelImage>::type);
+    assert(labelImage.type() == cv::DataType<label_t>::type);
     assert(data.type() == cv::DataType<TData>::type);
 
     // Find maximum label identifier in label image.
-    TLabelImage maxLabelId = 0;
+    label_t maxLabelId = 0;
 
     for (int row = 0; row < labelImage.rows; ++row) {
-        TLabelImage const* const labelImageRowPtr = labelImage.ptr<TLabelImage>(row);
+        label_t const* const labelImageRowPtr = labelImage.ptr<label_t>(row);
 
         for (int col = 0; col < labelImage.cols; ++col) {
             maxLabelId = std::max(maxLabelId, labelImageRowPtr[col]);
@@ -108,11 +131,11 @@ void AGaussianFeature<TLabelImage>::initializeGaussianStatistics(cv::Mat const& 
     out_labelStatistics = std::vector<LabelStatisticsGauss>(maxLabelId + 1, LabelStatisticsGauss());
 
     for (int row = 0; row < labelImage.rows; ++row) {
-        TLabelImage const* const labelImageRowPtr = labelImage.ptr<TLabelImage>(row);
+        label_t const* const labelImageRowPtr = labelImage.ptr<label_t>(row);
         TData const* const dataRowPtr = data.ptr<TData>(row);
 
         for (int col = 0; col < labelImage.cols; ++col) {
-            TLabelImage const curLabel = labelImageRowPtr[col];
+            label_t const curLabel = labelImageRowPtr[col];
 
             out_labelStatistics[curLabel].pixelCount++;
             out_labelStatistics[curLabel].valueSum += dataRowPtr[col];
@@ -121,21 +144,10 @@ void AGaussianFeature<TLabelImage>::initializeGaussianStatistics(cv::Mat const& 
     }
 }
 
-/**
- * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.
- * @param curPixelCoords coordinates of the regarded pixel
- * @param oldLabel old label of the regarded pixel
- * @param pretendLabel assumed new label of the regarded pixel
- * @param neighbourLabels all labels found in the 8-neighbourhood of the regarded pixel, including the old label of the pixel itself
- * @param labelStatistics label statistics of all labels in the image
- * @param data observed data of the modelled Gaussian distributions
- * @return total negative log-likelihood (or cost) of all labels in the neighbourhood, assuming the label change
- */
-template <typename TLabelImage>
 template <typename TData>
-double AGaussianFeature<TLabelImage>::calculateGaussianCost(cv::Point2i const& curPixelCoords,
-                                                            TLabelImage const& oldLabel, TLabelImage const& pretendLabel, std::vector<TLabelImage> const& neighbourLabels,
-                                                            std::vector<LabelStatisticsGauss> const& labelStatistics, cv::Mat const& data) const {
+double AGaussianFeature::calculateGaussianCost(cv::Point2i const& curPixelCoords,
+                                               label_t const& oldLabel, label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels,
+                                               std::vector<LabelStatisticsGauss> const& labelStatistics, cv::Mat const& data) const {
     assert(curPixelCoords.inside(cv::Rect(0, 0, data.cols, data.rows)));
     assert(data.type() == cv::DataType<TData>::type);
 
@@ -157,7 +169,7 @@ double AGaussianFeature<TLabelImage>::calculateGaussianCost(cv::Point2i const& c
     double featureCost = 0;
 
     // For each neighbouring label, add its cost.
-    for (typename std::vector<TLabelImage>::const_iterator it_neighbourLabel = neighbourLabels.begin();
+    for (typename std::vector<label_t>::const_iterator it_neighbourLabel = neighbourLabels.begin();
          it_neighbourLabel != neighbourLabels.end(); ++it_neighbourLabel) {
         // Get a pointer to the label statistics of the current label.
         // This should be the associated entry in the vector of label statistics, except for the
@@ -195,3 +207,4 @@ double AGaussianFeature<TLabelImage>::calculateGaussianCost(cv::Point2i const& c
 
     return featureCost;
 }
+}  // namespace cart::contour

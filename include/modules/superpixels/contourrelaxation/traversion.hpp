@@ -21,6 +21,7 @@
 
 #include <opencv2/opencv.hpp>
 
+namespace cart::contour {
 /**
  * @brief Class for looping over images in specified traversion orders.
  *
@@ -57,3 +58,4 @@ class TraversionGenerator {
 
     cv::Point2i end() const;
 };
+}  // namespace cart::contour

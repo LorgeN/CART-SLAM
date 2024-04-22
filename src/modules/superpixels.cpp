@@ -1,7 +1,7 @@
 #include "modules/superpixels.hpp"
 
-#include "modules/superpixels/VisualizationHelper.hpp"
-#include "modules/superpixels/contourrelaxation/InitializationFunctions.hpp"
+#include "modules/superpixels/contourrelaxation/initialization.hpp"
+#include "modules/superpixels/visualization.cuh"
 #include "utils/modules.hpp"
 
 namespace cart {
@@ -30,12 +30,12 @@ SuperPixelModule::SuperPixelModule(
     }
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-    std::vector<FeatureType> enabledFeatures = {Grayvalue, Compactness};
+    std::vector<contour::FeatureType> enabledFeatures = {contour::Grayvalue, contour::Compactness};
 #else
-    std::vector<FeatureType> enabledFeatures = {Color, Compactness};
+    std::vector<contour::FeatureType> enabledFeatures = {contour::Color, contour::Compactness};
 #endif
 
-    this->contourRelaxation = boost::make_shared<ContourRelaxation<super_pixel_label_t>>(enabledFeatures);
+    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(enabledFeatures);
     this->contourRelaxation->setCompactnessData(compactnessWeight);
 }
 
@@ -65,7 +65,7 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     cv::Mat labelImage;
 
     if (data.id == 1) {
-        labelImage = createBlockInitialization<super_pixel_label_t>(image.size(), this->blockWidth, this->blockHeight);
+        labelImage = contour::createBlockInitialization(image.size(), this->blockWidth, this->blockHeight);
     } else {
         // Retrieve the labels from the previous run, and use those as a starting point
         labelImage = data.getRelativeRun(-1)->getDataAsync<image_super_pixels_t>(CARTSLAM_KEY_SUPERPIXELS).get()->relaxedLabelImage;
@@ -90,13 +90,23 @@ boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, 
     boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
         auto pixels = data.getData<image_super_pixels_t>(CARTSLAM_KEY_SUPERPIXELS);
 
-        cv::Mat image;
-        getReferenceImage(data.dataElement).download(image);
+        LOG4CXX_DEBUG(this->logger, "Visualizing superpixels for frame " << data.id << " with " << pixels->relaxedLabelImage.cols << "x" << pixels->relaxedLabelImage.rows << " pixels");
 
-        cv::Mat boundaryOverlay;
-        computeBoundaryOverlay<super_pixel_label_t>(image, pixels->relaxedLabelImage, boundaryOverlay);
+        cv::cuda::GpuMat labels;
+        labels.upload(pixels->relaxedLabelImage);
 
-        this->imageThread->setImageIfLater(boundaryOverlay, data.id);
+        cv::cuda::GpuMat image = getReferenceImage(data.dataElement);
+
+        cv::cuda::GpuMat boundaryOverlay;
+
+        cart::contour::computeBoundaryOverlay(image, labels, boundaryOverlay);
+
+        cv::Mat boundaryOverlayCpu;
+        boundaryOverlay.download(boundaryOverlayCpu);
+
+        LOG4CXX_DEBUG(this->logger, "Visualized superpixels for frame " << data.id << " with " << boundaryOverlayCpu.cols << "x" << boundaryOverlayCpu.rows << " pixels");
+
+        this->imageThread->setImageIfLater(boundaryOverlayCpu, data.id);
         promise->set_value(MODULE_NO_RETURN_VALUE);
     });
 

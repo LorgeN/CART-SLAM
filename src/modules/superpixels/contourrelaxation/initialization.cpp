@@ -1,46 +1,13 @@
-// Copyright 2013 Visual Sensorics and Information Processing Lab, Goethe University, Frankfurt
-//
-// This file is part of Contour-relaxed Superpixels.
-//
-// Contour-relaxed Superpixels is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Contour-relaxed Superpixels is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Contour-relaxed Superpixels.  If not, see <http://www.gnu.org/licenses/>.
+#include "modules/superpixels/contourrelaxation/initialization.hpp"
 
-#pragma once
+namespace cart::contour {
 
-/**
- * @file InitializationFunctions.h
- * @brief Header file providing some initialization functions for label images. These can be used for generating a starting point for superpixel generation with Contour Relaxation.
- */
-
-#include <algorithm>
-#include <cmath>
-#include <opencv2/opencv.hpp>
-#include <vector>
-
-/**
- * @brief Create a label image initialization of rectangular blocks of the given size.
- * @param imageSize the size of the label image which will be created
- * @param blockWidth the width of one rectangular block
- * @param blockHeight the height of one rectangular block
- * @return a label image of the given size, constructed by blocks of the given size, with each block being a single, unique label
- */
-template <typename TLabelImage>
 cv::Mat createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight) {
     assert(imageSize.width > 0 && imageSize.height > 0);
     assert(blockWidth > 0 && blockHeight > 0);
     assert(imageSize.width >= blockWidth && imageSize.height >= blockHeight);
 
-    cv::Mat out_labelImage(imageSize, cv::DataType<TLabelImage>::type);
+    cv::Mat out_labelImage(imageSize, cv::DataType<label_t>::type);
 
     // Find out how many blocks there will be in each direction. If image size is not a multiple of block size,
     // we need to round upwards because there will be one additional (smaller) block.
@@ -48,7 +15,7 @@ cv::Mat createBlockInitialization(cv::Size const& imageSize, int const& blockWid
     int const numBlocksY = ceil(static_cast<double>(imageSize.height) / blockHeight);
 
     // Counter for the label of the current block.
-    TLabelImage curLabel = 0;
+    label_t curLabel = 0;
 
     for (int blockYi = 0; blockYi < numBlocksY; ++blockYi) {
         // Get the y-limits of all blocks in the current row of blocks.
@@ -77,13 +44,6 @@ cv::Mat createBlockInitialization(cv::Size const& imageSize, int const& blockWid
     return out_labelImage;
 }
 
-/**
- * @brief Create a label image initialization of diamonds / rotated rectangular blocks of the given size.
- * @param imageSize the size of the label image which will be created
- * @param sideLength the width and height of one rectangular block which will be rotated by 45 degrees to form a diamond
- * @return a label image of the given size, constructed by diamonds of the given size, with each diamond being a single, unique label
- */
-template <typename TLabelImage>
 cv::Mat createDiamondInitialization(cv::Size const& imageSize, int const& sideLength) {
     assert(imageSize.width > 0 && imageSize.height > 0);
     assert(sideLength > 0);
@@ -94,8 +54,8 @@ cv::Mat createDiamondInitialization(cv::Size const& imageSize, int const& sideLe
 
     // Create a block initialization of twice the size, which ensures we can pick our labels from the center
     // after rotation without getting border effects.
-    cv::Mat const bigBlockLabels = createBlockInitialization<TLabelImage>(cv::Size(2 * maxDimSize, 2 * maxDimSize),
-                                                                          sideLength, sideLength);
+    cv::Mat const bigBlockLabels = createBlockInitialization(cv::Size(2 * maxDimSize, 2 * maxDimSize),
+                                                             sideLength, sideLength);
 
     // Create a rotation matrix which rotates around the center of bigBlockLabels, for 45 degrees ccw, with scale 1.
     cv::Mat const rotationMatrix = cv::getRotationMatrix2D(cv::Point2f(maxDimSize, maxDimSize), 45, 1);
@@ -120,3 +80,4 @@ cv::Mat createDiamondInitialization(cv::Size const& imageSize, int const& sideLe
 
     return out_labelImage;
 }
+}  // namespace cart::contour
