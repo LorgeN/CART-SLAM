@@ -1,6 +1,66 @@
-#include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
-
 #include <boost/make_shared.hpp>
+#include <opencv2/core/cuda_stream_accessor.hpp>
+
+#include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
+#include "timing.hpp"
+#include "utils/cuda.cuh"
+
+#define THREADS_PER_BLOCK_X 32
+#define THREADS_PER_BLOCK_Y 32
+#define X_BATCH 4
+#define Y_BATCH 4
+
+#define SHARED_SIZE (X_BATCH * (2 + THREADS_PER_BLOCK_X)) * (Y_BATCH * (2 + THREADS_PER_BLOCK_Y))
+#define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 1, 1, sharedRowStep)
+
+__global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> labels, cv::cuda::PtrStepSz<uint8_t> out) {
+    __shared__ cart::contour::label_t sharedLabels[SHARED_SIZE];
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int sharedPixelX = threadIdx.x * X_BATCH;
+    int sharedPixelY = threadIdx.y * Y_BATCH;
+
+    int pixelX = x * X_BATCH;
+    int pixelY = y * Y_BATCH;
+
+    size_t sharedRowStep = X_BATCH * blockDim.x;
+    size_t outStep = out.step / sizeof(uint8_t);
+
+    copyToShared<cart::contour::label_t>(sharedLabels, labels, X_BATCH, Y_BATCH, 1, 1, labels.cols, labels.rows);
+
+    __syncthreads();
+
+    for (int i = 0; i < Y_BATCH; i++) {
+        for (int j = 0; j < X_BATCH; j++) {
+            if (pixelX + j >= labels.cols || pixelY + i >= labels.rows) {
+                continue;
+            }
+
+            cart::contour::label_t label = sharedLabels[LOCAL_INDEX(j, i)];
+
+            uint8_t border = false;
+
+            for (int k = -1; k <= 1; k++) {
+                for (int l = -1; l <= 1; l++) {
+                    if (k == 0 && l == 0) {
+                        continue;
+                    }
+
+                    cart::contour::label_t neighbor = sharedLabels[LOCAL_INDEX(j + k, i + l)];
+
+                    if (label != neighbor) {
+                        border = true;
+                        break;
+                    }
+                }
+            }
+
+            out[INDEX(pixelX + j, pixelY + i, outStep)] = border;
+        }
+    }
+}
 
 namespace cart::contour {
 
@@ -71,57 +131,70 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
     // from the updated label image in each step because we have an iterative algorithm.
     labelImage.copyTo(out_labelImage);
 
+    CARTSLAM_START_TIMING(initializeStats);
     // Compute the initial statistics of all labels given in the label image, for all features.
     for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
         (*it_curFeature)->initializeStatistics(out_labelImage);
     }
+    CARTSLAM_END_TIMING(initializeStats);
 
     // Create the initial boundary map.
     cv::Mat boundaryMap;
+    CARTSLAM_START_TIMING(boundaryMap);
     computeBoundaryMap(out_labelImage, boundaryMap);
+    CARTSLAM_END_TIMING(boundaryMap);
 
     // Create a traversion generator object, which will give us all the pixel coordinates in the current image
     // in all traversion orders specified inside that class. We will just need to loop over the coordinates
     // we receive by this object.
     TraversionGenerator traversionGen;
 
+    CARTSLAM_START_AVERAGE_TIMING(neighbour);
+    CARTSLAM_START_AVERAGE_TIMING(iteration);
+    CARTSLAM_START_AVERAGE_TIMING(calcCost);
+
     // Loop over specified number of iterations.
     for (unsigned int curIteration = 0; curIteration < numIterations; ++curIteration) {
         // Loop over all coordinates received by the traversion generator.
         // It is important to start with begin() here, which does not only set the correct image size,
         // but also resets all internal counters.
+        CARTSLAM_START_TIMING(iteration);
+
         for (cv::Point2i curPixelCoords = traversionGen.begin(labelImage.size()); curPixelCoords != traversionGen.end();
              curPixelCoords = traversionGen.nextPixel()) {
-            if (boundaryMap.at<unsigned char>(curPixelCoords) == 0) {
+            if (BOOST_LIKELY(boundaryMap.at<unsigned char>(curPixelCoords) == 0)) {
                 // We are not at a boundary pixel, no further processing necessary.
                 continue;
             }
 
+            CARTSLAM_START_TIMING(neighbour);
             // Get all neighbouring labels. This vector also contains the label of the current pixel itself.
             std::vector<label_t> const neighbourLabels = getNeighbourLabels(out_labelImage, curPixelCoords);
+            CARTSLAM_END_TIMING_SILENT(neighbour);
+            CARTSLAM_INCREMENT_AVERAGE_TIMING(neighbour);
 
             // If we have more than one label in the neighbourhood, the current pixel is a boundary pixel
             // and optimization will be carried out. Else, the neighbourhood only contains the label of the
             // pixel itself (since this label will definitely be there, and there is only one), so we don't
             // have a boundary pixel.
-            if (neighbourLabels.size() > 1) {
-                std::vector<double> costs(neighbourLabels.size());
-                std::vector<double>::iterator it_costs = costs.begin();
+            if (BOOST_LIKELY(neighbourLabels.size() > 1)) {
+                double minCost = std::numeric_limits<double>::max();
+                double bestLabel = out_labelImage.at<label_t>(curPixelCoords);
 
+                CARTSLAM_START_TIMING(calcCost);
                 for (typename std::vector<label_t>::const_iterator it_neighbourLabel = neighbourLabels.begin();
-                     it_neighbourLabel != neighbourLabels.end(); ++it_neighbourLabel, ++it_costs) {
-                    *it_costs = calculateCost(out_labelImage, curPixelCoords, *it_neighbourLabel,
-                                              neighbourLabels, directCliqueCost, diagonalCliqueCost);
+                     it_neighbourLabel != neighbourLabels.end(); ++it_neighbourLabel) {
+                    double cost = calculateCost(out_labelImage, curPixelCoords, *it_neighbourLabel,
+                                                neighbourLabels, directCliqueCost, diagonalCliqueCost);
+
+                    if (cost < minCost) {
+                        minCost = cost;
+                        bestLabel = *it_neighbourLabel;
+                    }
                 }
 
-                // Find the minimum cost.
-                std::vector<double>::iterator const it_minCost = std::min_element(costs.begin(), costs.end());
-
-                // Get the index of the minimum cost in the costs vector, which is also the index of the associated label in the neighbourhood.
-                std::vector<double>::size_type const minCostIndex = std::distance(costs.begin(), it_minCost);
-
-                // Get the label associated with the minimum cost.
-                label_t bestLabel = neighbourLabels[minCostIndex];
+                CARTSLAM_END_TIMING_SILENT(calcCost);
+                CARTSLAM_INCREMENT_AVERAGE_TIMING(calcCost);
 
                 // If we have found a better label for the pixel, update the statistics for all features
                 // and change the label of the pixel.
@@ -137,8 +210,16 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
                 }
             }
         }
+
+        CARTSLAM_END_TIMING(iteration);
+        CARTSLAM_INCREMENT_AVERAGE_TIMING(iteration);
     }
 
+    CARTSLAM_END_AVERAGE_TIMING(neighbour);
+    CARTSLAM_END_AVERAGE_TIMING(iteration);
+    CARTSLAM_END_AVERAGE_TIMING(calcCost);
+
+    /*
     // Generate an image which represents all pixels by the mean grayvalue of their label.
     if (colorFeatureEnabled == true) {
         colorFeature->generateRegionMeanImage(out_labelImage, out_regionMeanImage);
@@ -146,7 +227,7 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
         grayvalueFeature->generateRegionMeanImage(out_labelImage, out_regionMeanImage);
     } else {
         out_regionMeanImage = cv::Mat();
-    }
+    }*/
 }
 
 /**
@@ -245,14 +326,7 @@ double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Poi
 
     // Store the differences in coordinates of all direct cliques in reference to the central pixel.
     // Fill this static vector on the first function call, the elements will never change.
-    static std::vector<cv::Point2i> directCoordDiffs;
-
-    if (directCoordDiffs.size() == 0) {
-        directCoordDiffs.push_back(cv::Point2i(-1, 0));
-        directCoordDiffs.push_back(cv::Point2i(1, 0));
-        directCoordDiffs.push_back(cv::Point2i(0, -1));
-        directCoordDiffs.push_back(cv::Point2i(0, 1));
-    }
+    static const std::vector<cv::Point2i> directCoordDiffs = {cv::Point2i(-1, 0), cv::Point2i(1, 0), cv::Point2i(0, -1), cv::Point2i(0, 1)};
 
     int numDirectCliques = 0;
 
@@ -273,14 +347,7 @@ double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Poi
 
     // Store the differences in coordinates of all diagonal cliques in reference to the central pixel.
     // Fill this static vector on the first function call, the elements will never change.
-    static std::vector<cv::Point2i> diagonalCoordDiffs;
-
-    if (diagonalCoordDiffs.size() == 0) {
-        diagonalCoordDiffs.push_back(cv::Point2i(-1, -1));
-        diagonalCoordDiffs.push_back(cv::Point2i(-1, 1));
-        diagonalCoordDiffs.push_back(cv::Point2i(1, -1));
-        diagonalCoordDiffs.push_back(cv::Point2i(1, 1));
-    }
+    static const std::vector<cv::Point2i> diagonalCoordDiffs = {cv::Point2i(-1, -1), cv::Point2i(-1, 1), cv::Point2i(1, -1), cv::Point2i(1, 1)};
 
     int numDiagonalCliques = 0;
 
@@ -298,8 +365,7 @@ double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Poi
     }
 
     // Calculate and return the combined clique cost.
-    double cost = numDirectCliques * directCliqueCost + numDiagonalCliques * diagonalCliqueCost;
-    return cost;
+    return numDirectCliques * directCliqueCost + numDiagonalCliques * diagonalCliqueCost;
 }
 
 /**
@@ -308,6 +374,31 @@ double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Poi
  * @param out_boundaryMap the resulting boundary map, will be (re)allocated if necessary, binary by nature but stored as unsigned char
  */
 void ContourRelaxation::computeBoundaryMap(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const {
+    assert(labelImage.type() == cv::DataType<label_t>::type);
+
+    cv::cuda::Stream stream;
+
+    cv::cuda::GpuMat labelImageGpu;
+    labelImageGpu.upload(labelImage, stream);
+
+    cv::cuda::GpuMat out_boundaryMapGpu;
+    out_boundaryMapGpu.create(labelImage.size(), CV_8UC1);
+
+    dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 numBlocks((labelImage.cols + threadsPerBlock.x * X_BATCH - 1) / (threadsPerBlock.x * X_BATCH), (labelImage.rows + threadsPerBlock.y * Y_BATCH - 1) / (threadsPerBlock.y * Y_BATCH));
+
+    cudaStream_t cudaStream = cv::cuda::StreamAccessor::getStream(stream);
+
+    computeBoundaries<<<numBlocks, threadsPerBlock, 0, cudaStream>>>(labelImageGpu, out_boundaryMapGpu);
+
+    CUDA_SAFE_CALL(logger, cudaGetLastError());
+
+    out_boundaryMapGpu.download(out_boundaryMap, stream);
+
+    stream.waitForCompletion();
+}
+
+void ContourRelaxation::computeBoundaryMapSmall(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
     // Initialize (or reset) boundary map with zeros.
@@ -407,7 +498,7 @@ void ContourRelaxation::updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i
     // Compute a boundary map for the (maximum) 5x5 window around the current pixel.
     cv::Mat const labelArray5Window = labelImage(window5by5);
     cv::Mat boundaryMap5by5;
-    computeBoundaryMap(labelArray5Window, boundaryMap5by5);
+    computeBoundaryMapSmall(labelArray5Window, boundaryMap5by5);
 
     // Find out which parts of the 8-neighborhood are available around the current pixel
     // and get a window for this potentially cropped 8-neighborhood.

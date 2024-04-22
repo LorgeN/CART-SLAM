@@ -63,6 +63,8 @@ class ContourRelaxation {
 
     void computeBoundaryMap(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const;
 
+    void computeBoundaryMapSmall(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const;
+
     void updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords, cv::Mat& boundaryMap) const;
 
    public:

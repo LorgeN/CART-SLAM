@@ -122,4 +122,6 @@ inline void gpuAssert(log4cxx::LoggerPtr logger, cudaError_t code, const char *f
         exit(code);
     }
 }
+
+void reportMemoryUsage(log4cxx::LoggerPtr logger);
 }  // namespace cart

@@ -43,14 +43,4 @@ namespace cart::contour {
  */
 void computeBoundaryOverlay(cv::cuda::GpuMat bgrImage, cv::cuda::GpuMat labelImage, cv::cuda::GpuMat &out_boundaryOverlay);
 
-/**
- * @brief Compute a binary boundary image, containing 1 for pixels on a label boundary, 0 otherwise.
- * @param labelImage the label image, contains one label identifier per pixel
- * @param out_boundaryImage the resulting boundary image, binary by nature, but stored as unsigned chars, will be (re)allocated if necessary
- *
- * This function is basically taken from ContourRelaxation::computeBoundaryMap and provides exact boundary maps
- * (with 2 pixel-wide boundaries) which can be used e.g. for benchmarks.
- */
-void computeBoundaryImage(cv::cuda::GpuMat labelImage, cv::cuda::GpuMat &out_boundaryImage);
-
 }  // namespace cart::contour

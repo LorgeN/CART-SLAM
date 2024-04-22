@@ -53,17 +53,18 @@ int main(int argc, char* argv[]) {
 
     boost::future<void> last;
 
-    while (dataSource->hasNext()) {
+    int i = 0;
+    while (dataSource->hasNext() && i++ < 40) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
-        system->run().wait();
+        last = system->run();
 
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
-    //last.wait();
+    last.wait();
 
     system->getThreadPool().join();
 

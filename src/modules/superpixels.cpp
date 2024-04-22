@@ -73,12 +73,13 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
 
     cv::Mat relaxedLabelImage;
     cv::Mat regionMeanImage;
+
     this->contourRelaxation->relax(labelImage, this->directCliqueCost, this->diagonalCliqueCost,
                                    this->numIterations, relaxedLabelImage, regionMeanImage);
 
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     // Convert region-mean image back to BGR.
-    cv::cvtColor(regionMeanImage, regionMeanImage, cv::COLOR_YCrCb2BGR);
+    //cv::cvtColor(regionMeanImage, regionMeanImage, cv::COLOR_YCrCb2BGR);
 #endif
 
     return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, image_super_pixels_t, relaxedLabelImage, regionMeanImage);

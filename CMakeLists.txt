@@ -36,7 +36,7 @@ add_executable( cart_slam
     src/modules/superpixels.cpp
     src/modules/superpixels/visualization.cu
     src/modules/superpixels/contourrelaxation/traversion.cpp
-    src/modules/superpixels/contourrelaxation/contourrelaxation.cpp
+    src/modules/superpixels/contourrelaxation/contourrelaxation.cu
     src/modules/superpixels/contourrelaxation/initialization.cpp
     src/modules/superpixels/contourrelaxation/features/color.cpp
     src/modules/superpixels/contourrelaxation/features/compactness.cpp
@@ -45,6 +45,7 @@ add_executable( cart_slam
     src/utils/data.cpp
     src/utils/colors.cpp
     src/utils/peaks.cpp
+    src/utils/cuda.cu
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
