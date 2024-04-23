@@ -42,50 +42,29 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     // TODO: CUDA-ify this entire thing
     cv::cuda::GpuMat image;
     cv::cuda::Stream stream;
+    cv::Mat imageCpu;
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     // Generate a 3-channel version of the grayscale image, which we will need later on
     // to generate the boundary overlay. Save it in the "image" variable so we won't
     // have to care about the original type of the image anymore.
-    cv::Mat imageGray;
     cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_GRAY2BGR, 0, stream);
-    image.download(imageGray, stream);
-
-    stream.waitForCompletion();
 #else
     // Convert image to YUV-like YCrCb for uncorrelated color channels.
     cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_BGR2YCrCb, 0, stream);
-    std::vector<cv::Mat> imageYCrCbChannels;
-
-    cv::Mat imageYCrCb;
-    image.download(imageYCrCb, stream);
-
-    stream.waitForCompletion();
-
-    cv::split(imageYCrCb, imageYCrCbChannels);
 #endif
 
-    int numIterations = this->numIterations;
+    image.download(imageCpu, stream);
+    stream.waitForCompletion();
 
     cv::Mat relaxedLabelImage;
 
     {
         // Lock the mutex to protect the contour relaxation object, which is not thread safe
         boost::lock_guard<boost::mutex> lock(this->mutex);
-
-#ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-        this->contourRelaxation->setGrayvalueData(imageGray);
-#else
-        this->contourRelaxation->setColorData(imageYCrCbChannels[0], imageYCrCbChannels[1], imageYCrCbChannels[2]);
-#endif
-
-        this->contourRelaxation->relax(numIterations, relaxedLabelImage, cv::noArray());
+        this->contourRelaxation->setData(imageCpu);
+        this->contourRelaxation->relax(this->numIterations, relaxedLabelImage);
     }
-
-#ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-    // Convert region-mean image back to BGR.
-    // cv::cvtColor(regionMeanImage, regionMeanImage, cv::COLOR_YCrCb2BGR);
-#endif
 
     return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, cv::Mat, relaxedLabelImage);
 }

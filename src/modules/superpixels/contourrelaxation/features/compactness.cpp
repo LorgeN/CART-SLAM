@@ -32,7 +32,7 @@ void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords,
     labelStatsNewLabelPosY.squareValueSum += pow(curPixelCoords.y, 2.0);
 }
 
-void CompactnessFeature::setData(double const& compactnessWeight) {
+void CompactnessFeature::setWeight(double const& compactnessWeight) {
     assert(compactnessWeight >= 0);
 
     featureWeight = compactnessWeight;

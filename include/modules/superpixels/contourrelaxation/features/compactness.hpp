@@ -49,7 +49,7 @@ class CompactnessFeature : public IFeature {
      * @brief Set the weight to use when computing this feature's cost.
      * @param compactnessWeight weight (factor) with which to multiply the cost before returning it
      */
-    void setData(double const& compactnessWeight);
+    void setWeight(double const& compactnessWeight);
 
     /**
      * @brief Estimate the statistics of the spatial distribution for each label.

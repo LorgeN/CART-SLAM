@@ -59,5 +59,12 @@ class IFeature {
      * @param newLabel new label of the changing pixel
      */
     virtual void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) = 0;
+
+    /**
+     * @brief Set the data value of this feature
+     *
+     * @param data
+     */
+    virtual void setData(const cv::Mat& data) {}  // Provide a default implementation for features that do not need data
 };
 }  // namespace cart::contour

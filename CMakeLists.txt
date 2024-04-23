@@ -38,9 +38,7 @@ add_executable( cart_slam
     src/modules/superpixels/contourrelaxation/traversion.cpp
     src/modules/superpixels/contourrelaxation/contourrelaxation.cu
     src/modules/superpixels/contourrelaxation/initialization.cpp
-    src/modules/superpixels/contourrelaxation/features/color.cpp
     src/modules/superpixels/contourrelaxation/features/compactness.cpp
-    src/modules/superpixels/contourrelaxation/features/grayvalue.cpp
     src/utils/ui.cpp
     src/utils/data.cpp
     src/utils/colors.cpp

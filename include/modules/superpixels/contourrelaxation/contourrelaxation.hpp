@@ -71,17 +71,14 @@ class ContourRelaxation {
     const double directCliqueCost;
     const double diagonalCliqueCost;
     label_t maxLabelId;
-    bool initialized;
 
    public:
     ContourRelaxation(std::vector<FeatureType> features, const cv::Mat initialLabelImage, const double directCliqueCost,
                       const double diagonalCliqueCost);
 
-    void relax(unsigned int const numIterations, cv::OutputArray out_labelImage, cv::OutputArray out_regionMeanImage);
+    void relax(unsigned int const numIterations, cv::OutputArray out_labelImage);
 
-    void setGrayvalueData(cv::Mat const& grayvalueImage);
-
-    void setColorData(cv::Mat const& channel1, cv::Mat const& channel2, cv::Mat const& channel3);
+    void setData(const cv::Mat& image);
 
     void setCompactnessData(double const& compactnessWeight);
 };

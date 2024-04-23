@@ -75,7 +75,6 @@ ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features, const cv
     this->colorFeatureEnabled = false;
     this->compactnessFeatureEnabled = false;
     this->allFeatures = std::vector<boost::shared_ptr<IFeature>>();
-    this->initialized = false;
 
     initialLabelImage.copyTo(this->labelImage);
 
@@ -116,35 +115,30 @@ ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features, const cv
  * @param labelImage the input label image, containing one label identifier per pixel
  * @param numIterations number of iterations of Contour Relaxation to be performed (one iteration can include multiple passes)
  * @param out_labelImage the resulting label image after Contour Relaxation, will be (re)allocated if necessary
- * @param out_regionMeanImage the region mean image of the resulting label image (if grayvalue or color feature enabled, else an empty matrix header)
  *
  * One iteration of Contour Relaxation may pass over the image multiple times, in changing directions, in order to
  * mitigate the dependency of the result on the chosen order in which pixels are processed. This dependency comes from
  * the greedy nature of the performed optimization.
  */
-void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray out_labelImage, cv::OutputArray out_regionMeanImage) {
+void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray out_labelImage) {
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
-    if (!this->initialized) {
-        double maxLabelDbl = 0;
-        cv::minMaxIdx(this->labelImage, nullptr, &maxLabelDbl, nullptr, nullptr, cv::noArray());
-        this->maxLabelId = static_cast<label_t>(maxLabelDbl);
+    double maxLabelDbl = 0;
+    cv::minMaxIdx(this->labelImage, nullptr, &maxLabelDbl, nullptr, nullptr, cv::noArray());
+    this->maxLabelId = static_cast<label_t>(maxLabelDbl);
 
-        CARTSLAM_START_TIMING(initializeStats);
-        // Compute the initial statistics of all labels given in the label image, for all features.
-        for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-            (*it_curFeature)->initializeStatistics(this->labelImage, this->maxLabelId);
-        }
-
-        CARTSLAM_END_TIMING(initializeStats);
-
-        // Create the initial boundary map.
-        CARTSLAM_START_TIMING(boundaryMap);
-        computeBoundaryMap(this->labelImage, this->boundaryMap);
-        CARTSLAM_END_TIMING(boundaryMap);
-
-        this->initialized = true;
+    CARTSLAM_START_TIMING(initializeStats);
+    // Compute the initial statistics of all labels given in the label image, for all features.
+    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
+        (*it_curFeature)->initializeStatistics(this->labelImage, this->maxLabelId);
     }
+
+    CARTSLAM_END_TIMING(initializeStats);
+
+    // Create the initial boundary map.
+    CARTSLAM_START_TIMING(boundaryMap);
+    computeBoundaryMap(this->labelImage, this->boundaryMap);
+    CARTSLAM_END_TIMING(boundaryMap);
 
     // Create a traversion generator object, which will give us all the pixel coordinates in the current image
     // in all traversion orders specified inside that class. We will just need to loop over the coordinates
@@ -219,16 +213,6 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
     CARTSLAM_END_AVERAGE_TIMING(neighbour);
     CARTSLAM_END_AVERAGE_TIMING(iteration);
     CARTSLAM_END_AVERAGE_TIMING(calcCost);
-
-    if (out_regionMeanImage.needed() && out_regionMeanImage.isMat()) {
-        cv::Mat& meanImage = out_regionMeanImage.getMatRef();
-        // Generate an image which represents all pixels by the mean grayvalue of their label.
-        if (colorFeatureEnabled == true) {
-            colorFeature->generateRegionMeanImage(this->labelImage, meanImage);
-        } else if (grayvalueFeatureEnabled == true) {
-            grayvalueFeature->generateRegionMeanImage(this->labelImage, meanImage);
-        }
-    }
 
     // Return the resulting label image.
     if (out_labelImage.needed() && out_labelImage.isMat()) {
@@ -528,25 +512,13 @@ void ContourRelaxation::updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i
 }
 
 /**
- * @brief Set the observed data for the grayvalue feature.
- * @param grayvalueImage the observed grayvalue image
+ * @brief Set the data for all features.
+ * @param data the data to be set for all features
  */
-void ContourRelaxation::setGrayvalueData(cv::Mat const& grayvalueImage) {
-    assert(grayvalueFeatureEnabled == true);
-
-    grayvalueFeature->setData(grayvalueImage);
-}
-
-/**
- * @brief Set the observed data for the color feature.
- * @param channel1 the observed first image channel
- * @param channel2 the observed second image channel
- * @param channel3 the observed third image channel
- */
-void ContourRelaxation::setColorData(cv::Mat const& channel1, cv::Mat const& channel2, cv::Mat const& channel3) {
-    assert(colorFeatureEnabled == true);
-
-    colorFeature->setData(channel1, channel2, channel3);
+void ContourRelaxation::setData(const cv::Mat& data) {
+    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
+        (*it_curFeature)->setData(data);
+    }
 }
 
 /**
@@ -556,6 +528,6 @@ void ContourRelaxation::setColorData(cv::Mat const& channel1, cv::Mat const& cha
 void ContourRelaxation::setCompactnessData(double const& compactnessWeight) {
     assert(compactnessFeatureEnabled == true);
 
-    compactnessFeature->setData(compactnessWeight);
+    compactnessFeature->setWeight(compactnessWeight);
 }
 }  // namespace cart::contour

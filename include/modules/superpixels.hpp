@@ -19,14 +19,6 @@
 #endif
 
 namespace cart {
-struct image_super_pixels_t {
-    image_super_pixels_t(const cv::Mat &relaxedLabelImage, const cv::Mat &regionMeanImage)
-        : relaxedLabelImage(relaxedLabelImage), regionMeanImage(regionMeanImage){};
-
-    cv::Mat relaxedLabelImage;
-    cv::Mat regionMeanImage;
-};
-
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
