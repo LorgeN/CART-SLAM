@@ -4,6 +4,10 @@
 
 namespace cart::contour {
 
+inline void updateCompactnessCost(LabelStatisticsGauss& labelStats) {
+    labelStats.featureCost = labelStats.squareValueSum - (SQUARED(labelStats.valueSum) / static_cast<double>(labelStats.pixelCount));
+}
+
 void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords,
                                           LabelStatisticsGauss& labelStatsOldLabelPosX, LabelStatisticsGauss& labelStatsNewLabelPosX,
                                           LabelStatisticsGauss& labelStatsOldLabelPosY, LabelStatisticsGauss& labelStatsNewLabelPosY) const {
@@ -16,8 +20,8 @@ void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords,
     labelStatsNewLabelPosX.valueSum += curPixelCoords.x;
 
     // Update square x-position sum.
-    labelStatsOldLabelPosX.squareValueSum -= pow(curPixelCoords.x, 2.0);
-    labelStatsNewLabelPosX.squareValueSum += pow(curPixelCoords.x, 2.0);
+    labelStatsOldLabelPosX.squareValueSum -= SQUARED(curPixelCoords.x);
+    labelStatsNewLabelPosX.squareValueSum += SQUARED(curPixelCoords.x);
 
     // Update pixel count.
     labelStatsOldLabelPosY.pixelCount--;
@@ -28,8 +32,13 @@ void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords,
     labelStatsNewLabelPosY.valueSum += curPixelCoords.y;
 
     // Update square x-position sum.
-    labelStatsOldLabelPosY.squareValueSum -= pow(curPixelCoords.y, 2.0);
-    labelStatsNewLabelPosY.squareValueSum += pow(curPixelCoords.y, 2.0);
+    labelStatsOldLabelPosY.squareValueSum -= SQUARED(curPixelCoords.y);
+    labelStatsNewLabelPosY.squareValueSum += SQUARED(curPixelCoords.y);
+
+    updateCompactnessCost(labelStatsOldLabelPosX);
+    updateCompactnessCost(labelStatsNewLabelPosX);
+    updateCompactnessCost(labelStatsOldLabelPosY);
+    updateCompactnessCost(labelStatsNewLabelPosY);
 }
 
 void CompactnessFeature::setWeight(double const& compactnessWeight) {
@@ -54,12 +63,17 @@ void CompactnessFeature::initializeStatistics(cv::Mat const& labelImage, const l
 
             labelStatisticsPosX[curLabel].pixelCount++;
             labelStatisticsPosX[curLabel].valueSum += col;
-            labelStatisticsPosX[curLabel].squareValueSum += pow(col, 2.0);
+            labelStatisticsPosX[curLabel].squareValueSum += SQUARED(col);
 
             labelStatisticsPosY[curLabel].pixelCount++;
             labelStatisticsPosY[curLabel].valueSum += row;
-            labelStatisticsPosY[curLabel].squareValueSum += pow(row, 2.0);
+            labelStatisticsPosY[curLabel].squareValueSum += SQUARED(row);
         }
+    }
+
+    for (label_t curLabel = 0; curLabel <= maxLabelId; ++curLabel) {
+        updateCompactnessCost(labelStatisticsPosX[curLabel]);
+        updateCompactnessCost(labelStatisticsPosY[curLabel]);
     }
 }
 
@@ -112,9 +126,8 @@ double CompactnessFeature::calculateCost(cv::Point2i const& curPixelCoords,
         }
 
         // Add the cost of the current region.
-        featureCost += curLabelStatsPosX->squareValueSum - (pow(curLabelStatsPosX->valueSum, 2) / curLabelStatsPosX->pixelCount);
-
-        featureCost += curLabelStatsPosY->squareValueSum - (pow(curLabelStatsPosY->valueSum, 2) / curLabelStatsPosY->pixelCount);
+        featureCost += curLabelStatsPosX->featureCost;
+        featureCost += curLabelStatsPosY->featureCost;
     }
 
     return featureWeight * featureCost;

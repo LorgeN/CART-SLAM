@@ -38,6 +38,7 @@ struct LabelStatisticsGauss {
     boost::uint_fast32_t pixelCount;  ///< the number of pixels assigned to the label
     double valueSum;                  ///< the sum of values of all pixels assigned to the label
     double squareValueSum;            ///< the sum of squared values of all pixels assigned to the label
+    double featureCost;
 
     /**
      * @brief Default constructor to ensure that all members are initialized to sensible values.
@@ -135,11 +136,25 @@ class AGaussianFeature : public IFeature {
     void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) override;
 };
 
+inline void updateLabelFeatureCost(LabelStatisticsGauss& labelStats) {
+    // Compute the variance of the Gaussian distribution of the current label.
+    // Cast the numerator of both divisions to double so that we get double precision in the result,
+    // because the statistics are most likely stored as integers.
+    double variance = (labelStats.squareValueSum / static_cast<double>(labelStats.pixelCount)) - SQUARED(labelStats.valueSum / static_cast<double>(labelStats.pixelCount));
+
+    // Ensure variance is bigger than zero, else we could get -infinity
+    // cost which screws up everything. Could happen to labels with only
+    // a few pixels which all have the exact same grayvalue (or a label
+    // with just one pixel).
+    variance = std::max(variance, featuresMinVariance);
+
+    labelStats.featureCost = (static_cast<double>(labelStats.pixelCount) / 2 * log(2 * M_PI * variance)) + (static_cast<double>(labelStats.pixelCount) / 2);
+}
+
 template <typename TData, size_t VChannels>
 void AGaussianFeature<TData, VChannels>::setData(const cv::Mat& data) {
     assert(data.channels() == VChannels);
 
-    LOG4CXX_DEBUG(logger, "Setting data for Gaussian feature.");
     this->data = data;
 }
 
@@ -185,6 +200,9 @@ void AGaussianFeature<TData, VChannels>::updateGaussianStatistics(cv::Point2i co
         // Update square grayvalue sum.
         labelStatsOldLabel[ch].squareValueSum -= dataValueSquared;
         labelStatsNewLabel[ch].squareValueSum += dataValueSquared;
+
+        updateLabelFeatureCost(labelStatsOldLabel[ch]);
+        updateLabelFeatureCost(labelStatsNewLabel[ch]);
     }
 }
 
@@ -215,6 +233,10 @@ void AGaussianFeature<TData, VChannels>::initializeGaussianStatistics(const cv::
                 out_labelStatistics->squareValueSum += SQUARED(curData);
             }
         }
+    }
+
+    for (auto it = labelStatistics.begin(); it != labelStatistics.end(); ++it) {
+        updateLabelFeatureCost(*it);
     }
 }
 
@@ -274,19 +296,7 @@ double AGaussianFeature<TData, VChannels>::calculateGaussianCost(cv::Point2i con
                 continue;
             }
 
-            // Compute the variance of the Gaussian distribution of the current label.
-            // Cast the numerator of both divisions to double so that we get double precision in the result,
-            // because the statistics are most likely stored as integers.
-            double variance = (curLabelStats->squareValueSum / curLabelStats->pixelCount) - SQUARED(curLabelStats->valueSum / curLabelStats->pixelCount);
-
-            // Ensure variance is bigger than zero, else we could get -infinity
-            // cost which screws up everything. Could happen to labels with only
-            // a few pixels which all have the exact same grayvalue (or a label
-            // with just one pixel).
-            variance = std::max(variance, featuresMinVariance);
-
-            // Add the cost of the current region.
-            featureCost += (static_cast<double>(curLabelStats->pixelCount) / 2 * log(2 * M_PI * variance)) + (static_cast<double>(curLabelStats->pixelCount) / 2);
+            featureCost += curLabelStats->featureCost;
         }
     }
 
