@@ -55,7 +55,7 @@ class CompactnessFeature : public IFeature {
      * @brief Estimate the statistics of the spatial distribution for each label.
      * @param labelImage contains the label identifier to which each pixel is assigned
      */
-    void initializeStatistics(cv::Mat const& labelImage);
+    void initializeStatistics(const cv::Mat& labelImage, const label_t maxLabelId) override;
 
     /**
      * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.

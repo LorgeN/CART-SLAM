@@ -1,5 +1,7 @@
 #include "modules/superpixels.hpp"
 
+#include <opencv2/cudaimgproc.hpp>
+
 #include "modules/superpixels/contourrelaxation/initialization.hpp"
 #include "modules/superpixels/visualization.cuh"
 #include "utils/modules.hpp"
@@ -12,11 +14,7 @@ SuperPixelModule::SuperPixelModule(
     const double directCliqueCost,
     const double compactnessWeight)
     : SuperPixelModule::SyncWrapperSystemModule("SuperPixelDetect"),
-      numIterations(numIterations),
-      blockWidth(blockWidth),
-      blockHeight(blockHeight),
-      directCliqueCost(directCliqueCost),
-      diagonalCliqueCost(directCliqueCost / sqrt(2)) {
+      numIterations(numIterations) {
     if (blockWidth < 1 || blockHeight < 1) {
         throw std::invalid_argument("blockWidth and blockHeight must be more than 1");
     }
@@ -35,66 +33,71 @@ SuperPixelModule::SuperPixelModule(
     std::vector<contour::FeatureType> enabledFeatures = {contour::Color, contour::Compactness};
 #endif
 
-    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(enabledFeatures);
+    cv::Mat initialLabelImage = contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight);
+    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(enabledFeatures, initialLabelImage, directCliqueCost, directCliqueCost / sqrt(2));
     this->contourRelaxation->setCompactnessData(compactnessWeight);
 }
 
 system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data) {
     // TODO: CUDA-ify this entire thing
-    cv::Mat image;
-    getReferenceImage(data.dataElement).download(image);
+    cv::cuda::GpuMat image;
+    cv::cuda::Stream stream;
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     // Generate a 3-channel version of the grayscale image, which we will need later on
     // to generate the boundary overlay. Save it in the "image" variable so we won't
     // have to care about the original type of the image anymore.
-    cv::Mat imageGray = image.clone();
-    cv::cvtColor(imageGray, image, cv::COLOR_GRAY2BGR);
+    cv::Mat imageGray;
+    cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_GRAY2BGR, 0, stream);
+    image.download(imageGray, stream);
 
-    this->contourRelaxation->setGrayvalueData(imageGray);
+    stream.waitForCompletion();
 #else
     // Convert image to YUV-like YCrCb for uncorrelated color channels.
-    cv::Mat imageYCrCb;
-    cv::cvtColor(image, imageYCrCb, cv::COLOR_BGR2YCrCb);
+    cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_BGR2YCrCb, 0, stream);
     std::vector<cv::Mat> imageYCrCbChannels;
-    cv::split(imageYCrCb, imageYCrCbChannels);
 
-    this->contourRelaxation->setColorData(imageYCrCbChannels[0], imageYCrCbChannels[1], imageYCrCbChannels[2]);
+    cv::Mat imageYCrCb;
+    image.download(imageYCrCb, stream);
+
+    stream.waitForCompletion();
+
+    cv::split(imageYCrCb, imageYCrCbChannels);
 #endif
 
-    cv::Mat labelImage;
-
-    if (data.id == 1) {
-        labelImage = contour::createBlockInitialization(image.size(), this->blockWidth, this->blockHeight);
-    } else {
-        // Retrieve the labels from the previous run, and use those as a starting point
-        labelImage = data.getRelativeRun(-1)->getDataAsync<image_super_pixels_t>(CARTSLAM_KEY_SUPERPIXELS).get()->relaxedLabelImage;
-    }
+    int numIterations = this->numIterations;
 
     cv::Mat relaxedLabelImage;
-    cv::Mat regionMeanImage;
 
-    this->contourRelaxation->relax(labelImage, this->directCliqueCost, this->diagonalCliqueCost,
-                                   this->numIterations, relaxedLabelImage, regionMeanImage);
+    {
+        // Lock the mutex to protect the contour relaxation object, which is not thread safe
+        boost::lock_guard<boost::mutex> lock(this->mutex);
+
+#ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
+        this->contourRelaxation->setGrayvalueData(imageGray);
+#else
+        this->contourRelaxation->setColorData(imageYCrCbChannels[0], imageYCrCbChannels[1], imageYCrCbChannels[2]);
+#endif
+
+        this->contourRelaxation->relax(numIterations, relaxedLabelImage, cv::noArray());
+    }
 
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     // Convert region-mean image back to BGR.
-    //cv::cvtColor(regionMeanImage, regionMeanImage, cv::COLOR_YCrCb2BGR);
+    // cv::cvtColor(regionMeanImage, regionMeanImage, cv::COLOR_YCrCb2BGR);
 #endif
 
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, image_super_pixels_t, relaxedLabelImage, regionMeanImage);
+    return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, cv::Mat, relaxedLabelImage);
 }
 
 boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, SystemRunData &data) {
     auto promise = boost::make_shared<boost::promise<system_data_t>>();
 
     boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto pixels = data.getData<image_super_pixels_t>(CARTSLAM_KEY_SUPERPIXELS);
-
-        LOG4CXX_DEBUG(this->logger, "Visualizing superpixels for frame " << data.id << " with " << pixels->relaxedLabelImage.cols << "x" << pixels->relaxedLabelImage.rows << " pixels");
+        auto labelImage = data.getData<cv::Mat>(CARTSLAM_KEY_SUPERPIXELS);
 
         cv::cuda::GpuMat labels;
-        labels.upload(pixels->relaxedLabelImage);
+        labels.upload(*labelImage);
 
         cv::cuda::GpuMat image = getReferenceImage(data.dataElement);
 
@@ -104,8 +107,6 @@ boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, 
 
         cv::Mat boundaryOverlayCpu;
         boundaryOverlay.download(boundaryOverlayCpu);
-
-        LOG4CXX_DEBUG(this->logger, "Visualized superpixels for frame " << data.id << " with " << boundaryOverlayCpu.cols << "x" << boundaryOverlayCpu.rows << " pixels");
 
         this->imageThread->setImageIfLater(boundaryOverlayCpu, data.id);
         promise->set_value(MODULE_NO_RETURN_VALUE);

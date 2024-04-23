@@ -14,11 +14,11 @@ void ColorFeature::setData(cv::Mat const& colorChannel1, cv::Mat const& colorCha
     colorChannel3.copyTo(channel3);
 }
 
-void ColorFeature::initializeStatistics(cv::Mat const& labelImage) {
+void ColorFeature::initializeStatistics(cv::Mat const& labelImage, const label_t maxLabelId) {
     // Use the provided initialization method for gaussian statistics from AGaussianFeature.
-    this->initializeGaussianStatistics<TColorData>(labelImage, channel1, labelStatisticsChan1);
-    this->initializeGaussianStatistics<TColorData>(labelImage, channel2, labelStatisticsChan2);
-    this->initializeGaussianStatistics<TColorData>(labelImage, channel3, labelStatisticsChan3);
+    this->initializeGaussianStatistics<TColorData>(labelImage, maxLabelId, channel1, labelStatisticsChan1);
+    this->initializeGaussianStatistics<TColorData>(labelImage, maxLabelId, channel2, labelStatisticsChan2);
+    this->initializeGaussianStatistics<TColorData>(labelImage, maxLabelId, channel3, labelStatisticsChan3);
 }
 
 double ColorFeature::calculateCost(cv::Point2i const& curPixelCoords,

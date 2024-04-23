@@ -65,7 +65,7 @@ class AGaussianFeature : public IFeature {
      * @param out_labelStatistics will be created and contain the label statistics of all labels in labelImage
      */
     template <typename TData>
-    void initializeGaussianStatistics(cv::Mat const& labelImage, cv::Mat const& data,
+    void initializeGaussianStatistics(const cv::Mat& labelImage, const label_t maxLabelId, const cv::Mat& data,
                                       std::vector<LabelStatisticsGauss>& out_labelStatistics) const;
     /**
      * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.
@@ -109,37 +109,27 @@ void AGaussianFeature::updateGaussianStatistics(cv::Point2i const& curPixelCoord
 }
 
 template <typename TData>
-void AGaussianFeature::initializeGaussianStatistics(cv::Mat const& labelImage, cv::Mat const& data,
+void AGaussianFeature::initializeGaussianStatistics(const cv::Mat& labelImage, const label_t maxLabelId, const cv::Mat& data,
                                                     std::vector<LabelStatisticsGauss>& out_labelStatistics) const {
     assert(labelImage.size() == data.size());
     assert(labelImage.type() == cv::DataType<label_t>::type);
     assert(data.type() == cv::DataType<TData>::type);
-
-    // Find maximum label identifier in label image.
-    label_t maxLabelId = 0;
-
-    for (int row = 0; row < labelImage.rows; ++row) {
-        label_t const* const labelImageRowPtr = labelImage.ptr<label_t>(row);
-
-        for (int col = 0; col < labelImage.cols; ++col) {
-            maxLabelId = std::max(maxLabelId, labelImageRowPtr[col]);
-        }
-    }
 
     // Allocate the vector of label statistics, with the maximum index being the maximum label identifier.
     // This might waste a small amount of memory, but we can use the label identifier as index for this vector.
     out_labelStatistics = std::vector<LabelStatisticsGauss>(maxLabelId + 1, LabelStatisticsGauss());
 
     for (int row = 0; row < labelImage.rows; ++row) {
-        label_t const* const labelImageRowPtr = labelImage.ptr<label_t>(row);
-        TData const* const dataRowPtr = data.ptr<TData>(row);
+        const label_t* const labelImageRowPtr = labelImage.ptr<label_t>(row);
+        const TData* const dataRowPtr = data.ptr<TData>(row);
 
         for (int col = 0; col < labelImage.cols; ++col) {
-            label_t const curLabel = labelImageRowPtr[col];
+            const label_t curLabel = labelImageRowPtr[col];
+            const TData curData = dataRowPtr[col];
 
             out_labelStatistics[curLabel].pixelCount++;
-            out_labelStatistics[curLabel].valueSum += dataRowPtr[col];
-            out_labelStatistics[curLabel].squareValueSum += pow(static_cast<double>(dataRowPtr[col]), 2.0);
+            out_labelStatistics[curLabel].valueSum += curData;
+            out_labelStatistics[curLabel].squareValueSum += curData * curData;
         }
     }
 }

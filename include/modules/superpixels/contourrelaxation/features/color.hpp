@@ -53,7 +53,7 @@ class ColorFeature : public AGaussianFeature {
      * @brief Estimate the label statistics of all labels in the given label image, using the observed data saved in the feature object.
      * @param labelImage label identifiers of all pixels
      */
-    void initializeStatistics(cv::Mat const& labelImage);
+    void initializeStatistics(const cv::Mat& labelImage, const label_t maxLabelId) override;
 
     /**
      * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.

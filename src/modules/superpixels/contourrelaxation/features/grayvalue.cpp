@@ -7,9 +7,9 @@ void GrayvalueFeature::setData(cv::Mat const& grayvalueImage) {
     grayvalueImage.copyTo(grayvalImage);
 }
 
-void GrayvalueFeature::initializeStatistics(cv::Mat const& labelImage) {
+void GrayvalueFeature::initializeStatistics(cv::Mat const& labelImage, const label_t maxLabelId) {
     // Use the provided initialization method for gaussian statistics from AGaussianFeature.
-    this->template initializeGaussianStatistics<TGrayvalueData>(labelImage, grayvalImage, labelStatistics);
+    this->template initializeGaussianStatistics<TGrayvalueData>(labelImage, maxLabelId, grayvalImage, labelStatistics);
 }
 
 double GrayvalueFeature::calculateCost(cv::Point2i const& curPixelCoords,

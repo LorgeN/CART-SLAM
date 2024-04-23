@@ -31,6 +31,7 @@
 #include "features/compactness.hpp"
 #include "features/grayvalue.hpp"
 #include "features/type.hpp"
+#include "initialization.hpp"
 #include "traversion.hpp"
 
 namespace cart::contour {
@@ -55,11 +56,9 @@ class ContourRelaxation {
     std::vector<label_t> getNeighbourLabels(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords) const;
 
     double calculateCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
-                         label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels,
-                         double const& directCliqueCost, double const& diagonalCliqueCost) const;
+                         label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels) const;
 
-    double calculateCliqueCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords, label_t const& pretendLabel,
-                               double const& directCliqueCost, double const& diagonalCliqueCost) const;
+    double calculateCliqueCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords, label_t const& pretendLabel) const;
 
     void computeBoundaryMap(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const;
 
@@ -67,11 +66,18 @@ class ContourRelaxation {
 
     void updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords, cv::Mat& boundaryMap) const;
 
-   public:
-    ContourRelaxation(std::vector<FeatureType> features);
+    cv::Mat labelImage;
+    cv::Mat boundaryMap;
+    const double directCliqueCost;
+    const double diagonalCliqueCost;
+    label_t maxLabelId;
+    bool initialized;
 
-    void relax(cv::Mat const& labelImage, double const& directCliqueCost, double const& diagonalCliqueCost,
-               unsigned int const& numIterations, cv::Mat& out_labelImage, cv::Mat& out_regionMeanImage) const;
+   public:
+    ContourRelaxation(std::vector<FeatureType> features, const cv::Mat initialLabelImage, const double directCliqueCost,
+                      const double diagonalCliqueCost);
+
+    void relax(unsigned int const numIterations, cv::OutputArray out_labelImage, cv::OutputArray out_regionMeanImage);
 
     void setGrayvalueData(cv::Mat const& grayvalueImage);
 

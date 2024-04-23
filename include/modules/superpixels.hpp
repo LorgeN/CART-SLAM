@@ -40,12 +40,8 @@ class SuperPixelModule : public SyncWrapperSystemModule {
 
    private:
     boost::shared_ptr<contour::ContourRelaxation> contourRelaxation;
-
     const unsigned int numIterations;
-    const unsigned int blockWidth;
-    const unsigned int blockHeight;
-    const double directCliqueCost;
-    const double diagonalCliqueCost;
+    boost::mutex mutex;  // Mutex to protect the contour relaxation object
 };
 
 class SuperPixelVisualizationModule : public SystemModule {

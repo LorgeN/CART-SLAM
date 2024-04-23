@@ -38,19 +38,8 @@ void CompactnessFeature::setData(double const& compactnessWeight) {
     featureWeight = compactnessWeight;
 }
 
-void CompactnessFeature::initializeStatistics(cv::Mat const& labelImage) {
+void CompactnessFeature::initializeStatistics(cv::Mat const& labelImage, const label_t maxLabelId) {
     assert(labelImage.type() == cv::DataType<label_t>::type);
-
-    // Find maximum label identifier in label image.
-    label_t maxLabelId = 0;
-
-    for (int row = 0; row < labelImage.rows; ++row) {
-        label_t const* const labelImageRowPtr = labelImage.ptr<label_t>(row);
-
-        for (int col = 0; col < labelImage.cols; ++col) {
-            maxLabelId = std::max(maxLabelId, labelImageRowPtr[col]);
-        }
-    }
 
     // Allocate the vectors of label statistics, with the maximum index being the maximum label identifier.
     // This might waste a small amount of memory, but we can use the label identifier as index for this vector.

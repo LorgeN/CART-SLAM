@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     boost::future<void> last;
 
     int i = 0;
-    while (dataSource->hasNext() && i++ < 40) {
+    while (dataSource->hasNext() && i++ < 300) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 

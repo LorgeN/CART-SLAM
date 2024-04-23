@@ -68,12 +68,16 @@ namespace cart::contour {
  * @brief Constructor. Create a ContourRelaxation object with the specified features enabled.
  * @param features contains the features to be enabled
  */
-ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features) {
+ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features, const cv::Mat initialLabelImage, const double directCliqueCost,
+                                     const double diagonalCliqueCost) : directCliqueCost(directCliqueCost), diagonalCliqueCost(diagonalCliqueCost) {
     // First set all features to disabled.
-    grayvalueFeatureEnabled = false;
-    colorFeatureEnabled = false;
-    compactnessFeatureEnabled = false;
-    allFeatures = std::vector<boost::shared_ptr<IFeature>>();
+    this->grayvalueFeatureEnabled = false;
+    this->colorFeatureEnabled = false;
+    this->compactnessFeatureEnabled = false;
+    this->allFeatures = std::vector<boost::shared_ptr<IFeature>>();
+    this->initialized = false;
+
+    initialLabelImage.copyTo(this->labelImage);
 
     // Remove duplicates from the vector of features.
     // First sort the vector, then remove consecutive duplicates, then resize.
@@ -110,8 +114,6 @@ ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features) {
 /**
  * @brief Apply Contour Relaxation to the given label image, with the features enabled in this ContourRelaxation object.
  * @param labelImage the input label image, containing one label identifier per pixel
- * @param directCliqueCost Markov clique cost for one clique in horizontal or vertical direction
- * @param diagonalCliqueCost Markov clique cost for one clique in diagonal direction
  * @param numIterations number of iterations of Contour Relaxation to be performed (one iteration can include multiple passes)
  * @param out_labelImage the resulting label image after Contour Relaxation, will be (re)allocated if necessary
  * @param out_regionMeanImage the region mean image of the resulting label image (if grayvalue or color feature enabled, else an empty matrix header)
@@ -120,29 +122,29 @@ ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features) {
  * mitigate the dependency of the result on the chosen order in which pixels are processed. This dependency comes from
  * the greedy nature of the performed optimization.
  */
-void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCliqueCost, double const& diagonalCliqueCost,
-                              unsigned int const& numIterations, cv::Mat& out_labelImage, cv::Mat& out_regionMeanImage) const {
+void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray out_labelImage, cv::OutputArray out_regionMeanImage) {
     assert(labelImage.type() == cv::DataType<label_t>::type);
-    assert(directCliqueCost >= 0);
-    assert(diagonalCliqueCost >= 0);
 
-    // Copy the label image to the output variable. From then on, always work on the output label image!
-    // Changes to the input label image are impossible anyway since it's const, but we also need to read
-    // from the updated label image in each step because we have an iterative algorithm.
-    labelImage.copyTo(out_labelImage);
+    if (!this->initialized) {
+        double maxLabelDbl = 0;
+        cv::minMaxIdx(this->labelImage, nullptr, &maxLabelDbl, nullptr, nullptr, cv::noArray());
+        this->maxLabelId = static_cast<label_t>(maxLabelDbl);
 
-    CARTSLAM_START_TIMING(initializeStats);
-    // Compute the initial statistics of all labels given in the label image, for all features.
-    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-        (*it_curFeature)->initializeStatistics(out_labelImage);
+        CARTSLAM_START_TIMING(initializeStats);
+        // Compute the initial statistics of all labels given in the label image, for all features.
+        for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
+            (*it_curFeature)->initializeStatistics(this->labelImage, this->maxLabelId);
+        }
+
+        CARTSLAM_END_TIMING(initializeStats);
+
+        // Create the initial boundary map.
+        CARTSLAM_START_TIMING(boundaryMap);
+        computeBoundaryMap(this->labelImage, this->boundaryMap);
+        CARTSLAM_END_TIMING(boundaryMap);
+
+        this->initialized = true;
     }
-    CARTSLAM_END_TIMING(initializeStats);
-
-    // Create the initial boundary map.
-    cv::Mat boundaryMap;
-    CARTSLAM_START_TIMING(boundaryMap);
-    computeBoundaryMap(out_labelImage, boundaryMap);
-    CARTSLAM_END_TIMING(boundaryMap);
 
     // Create a traversion generator object, which will give us all the pixel coordinates in the current image
     // in all traversion orders specified inside that class. We will just need to loop over the coordinates
@@ -169,7 +171,7 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
 
             CARTSLAM_START_TIMING(neighbour);
             // Get all neighbouring labels. This vector also contains the label of the current pixel itself.
-            std::vector<label_t> const neighbourLabels = getNeighbourLabels(out_labelImage, curPixelCoords);
+            std::vector<label_t> const neighbourLabels = getNeighbourLabels(this->labelImage, curPixelCoords);
             CARTSLAM_END_TIMING_SILENT(neighbour);
             CARTSLAM_INCREMENT_AVERAGE_TIMING(neighbour);
 
@@ -179,13 +181,12 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
             // have a boundary pixel.
             if (BOOST_LIKELY(neighbourLabels.size() > 1)) {
                 double minCost = std::numeric_limits<double>::max();
-                double bestLabel = out_labelImage.at<label_t>(curPixelCoords);
+                double bestLabel = this->labelImage.at<label_t>(curPixelCoords);
 
                 CARTSLAM_START_TIMING(calcCost);
                 for (typename std::vector<label_t>::const_iterator it_neighbourLabel = neighbourLabels.begin();
                      it_neighbourLabel != neighbourLabels.end(); ++it_neighbourLabel) {
-                    double cost = calculateCost(out_labelImage, curPixelCoords, *it_neighbourLabel,
-                                                neighbourLabels, directCliqueCost, diagonalCliqueCost);
+                    double cost = calculateCost(this->labelImage, curPixelCoords, *it_neighbourLabel, neighbourLabels);
 
                     if (cost < minCost) {
                         minCost = cost;
@@ -198,15 +199,15 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
 
                 // If we have found a better label for the pixel, update the statistics for all features
                 // and change the label of the pixel.
-                if (bestLabel != out_labelImage.at<label_t>(curPixelCoords)) {
+                if (bestLabel != this->labelImage.at<label_t>(curPixelCoords)) {
                     for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-                        (*it_curFeature)->updateStatistics(curPixelCoords, out_labelImage.at<label_t>(curPixelCoords), bestLabel);
+                        (*it_curFeature)->updateStatistics(curPixelCoords, this->labelImage.at<label_t>(curPixelCoords), bestLabel);
                     }
 
-                    out_labelImage.at<label_t>(curPixelCoords) = bestLabel;
+                    this->labelImage.at<label_t>(curPixelCoords) = bestLabel;
 
                     // We also need to update the boundary map around the current pixel.
-                    updateBoundaryMap(out_labelImage, curPixelCoords, boundaryMap);
+                    updateBoundaryMap(this->labelImage, curPixelCoords, boundaryMap);
                 }
             }
         }
@@ -219,15 +220,21 @@ void ContourRelaxation::relax(cv::Mat const& labelImage, double const& directCli
     CARTSLAM_END_AVERAGE_TIMING(iteration);
     CARTSLAM_END_AVERAGE_TIMING(calcCost);
 
-    /*
-    // Generate an image which represents all pixels by the mean grayvalue of their label.
-    if (colorFeatureEnabled == true) {
-        colorFeature->generateRegionMeanImage(out_labelImage, out_regionMeanImage);
-    } else if (grayvalueFeatureEnabled == true) {
-        grayvalueFeature->generateRegionMeanImage(out_labelImage, out_regionMeanImage);
-    } else {
-        out_regionMeanImage = cv::Mat();
-    }*/
+    if (out_regionMeanImage.needed() && out_regionMeanImage.isMat()) {
+        cv::Mat& meanImage = out_regionMeanImage.getMatRef();
+        // Generate an image which represents all pixels by the mean grayvalue of their label.
+        if (colorFeatureEnabled == true) {
+            colorFeature->generateRegionMeanImage(this->labelImage, meanImage);
+        } else if (grayvalueFeatureEnabled == true) {
+            grayvalueFeature->generateRegionMeanImage(this->labelImage, meanImage);
+        }
+    }
+
+    // Return the resulting label image.
+    if (out_labelImage.needed() && out_labelImage.isMat()) {
+        out_labelImage.create(labelImage.size(), labelImage.type());
+        labelImage.copyTo(out_labelImage.getMat());
+    }
 }
 
 /**
@@ -279,18 +286,15 @@ std::vector<label_t> ContourRelaxation::getNeighbourLabels(cv::Mat const& labelI
  * @param curPixelCoords coordinates of the regarded pixel
  * @param pretendLabel assumed new label of the regarded pixel
  * @param neighbourLabels all labels in the neighbourhood of the regarded pixel, including the label of the pixel itself
- * @param directCliqueCost Markov clique cost for one clique in horizontal or vertical direction
- * @param diagonalCliqueCost Markov clique cost for one clique in diagonal direction
  * @return the total cost, summed over all labels in the neighbourhood and all enabled features, plus the Markov clique costs
  */
 double ContourRelaxation::calculateCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
-                                        label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels,
-                                        double const& directCliqueCost, double const& diagonalCliqueCost) const {
+                                        label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
     assert(curPixelCoords.inside(cv::Rect(0, 0, labelImage.cols, labelImage.rows)));
 
     // Calculate clique cost.
-    double cost = calculateCliqueCost(labelImage, curPixelCoords, pretendLabel, directCliqueCost, diagonalCliqueCost);
+    double cost = calculateCliqueCost(labelImage, curPixelCoords, pretendLabel);
 
     // Calculate and add up the costs of all features.
     label_t const oldLabel = labelImage.at<label_t>(curPixelCoords);
@@ -307,12 +311,10 @@ double ContourRelaxation::calculateCost(cv::Mat const& labelImage, cv::Point2i c
  * @param labelImage the current label image, contains one label identifier per pixel
  * @param curPixelCoords coordinates of the regarded pixel
  * @param pretendLabel assumed new label of the regarded pixel
- * @param directCliqueCost Markov clique cost for one clique in horizontal or vertical direction
- * @param diagonalCliqueCost Markov clique cost for one clique in diagonal direction
  * @return the total Markov clique cost for the given label at the given pixel coordinates
  */
 double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
-                                              label_t const& pretendLabel, double const& directCliqueCost, double const& diagonalCliqueCost) const {
+                                              label_t const& pretendLabel) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
     assert(curPixelCoords.inside(cv::Rect(0, 0, labelImage.cols, labelImage.rows)));
 

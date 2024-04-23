@@ -36,8 +36,9 @@ class IFeature {
     /**
      * @brief Compute the internal label statistics for all labels in the given label image.
      * @param labelImage the current label image, contains one label identifier per pixel
+     * @param maxLabelId the highest label identifier found in the label image
      */
-    virtual void initializeStatistics(cv::Mat const& labelImage) = 0;
+    virtual void initializeStatistics(const cv::Mat& labelImage, const label_t maxLabelId) = 0;
 
     /**
      * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.
