@@ -96,19 +96,17 @@ class AGaussianFeature : public IFeature {
     }
 
     cv::Mat data;
+    const DataType target;
 
    public:
+    AGaussianFeature(const DataType target = Image) : target(target) {}
+
     /**
      * @brief Provide a virtual destructor so instances of derived classes can be safely destroyed through a pointer or reference of type AGaussianFeature.
      */
     virtual ~AGaussianFeature() = default;
 
-    /**
-     * @brief Set the data value of this feature
-     *
-     * @param data
-     */
-    virtual void setData(const cv::Mat& data) override;
+    virtual void setData(const DataType type, const cv::Mat& data) override;
 
     /**
      * @brief Estimate the label statistics of all labels in the given label image, using the observed data saved in the feature object.
@@ -152,7 +150,11 @@ inline void updateLabelFeatureCost(LabelStatisticsGauss& labelStats) {
 }
 
 template <typename TData, size_t VChannels>
-void AGaussianFeature<TData, VChannels>::setData(const cv::Mat& data) {
+void AGaussianFeature<TData, VChannels>::setData(const DataType type, const cv::Mat& data) {
+    if (type != this->target) {
+        return;
+    }
+
     assert(data.channels() == VChannels);
 
     this->data = data;

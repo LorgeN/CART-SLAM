@@ -22,6 +22,12 @@
 #include "../constants.hpp"
 
 namespace cart::contour {
+
+enum DataType {
+    Image,
+    Disparity
+};
+
 /**
  * @class IFeature
  * @brief Interface for feature classes. Defines the functions a feature class must implement so that it can be used in the Contour Relaxation framework.
@@ -61,10 +67,11 @@ class IFeature {
     virtual void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) = 0;
 
     /**
-     * @brief Set the data value of this feature
+     * @brief Update the data value of this feature
      *
-     * @param data
+     * @param type the type of data to set
+     * @param image the data value
      */
-    virtual void setData(const cv::Mat& data) {}  // Provide a default implementation for features that do not need data
+    virtual void setData(const DataType type, const cv::Mat& image) {}  // Provide a default implementation for features that do not need data
 };
 }  // namespace cart::contour

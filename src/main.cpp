@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], false);
+    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
     // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
@@ -32,9 +32,12 @@ int main(int argc, char* argv[]) {
     // system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
-    // system->addModule<cart::ZEDImageDisparityModule>();
+    system->addModule<cart::ZEDImageDisparityModule>();
     // system->addModule<cart::ImageDisparityModule>(1, 256, 5, 3, 5);
     // system->addModule<cart::ImageDisparityVisualizationModule>();
+
+    system->addModule<cart::ImageDisparityDerivativeModule>();
+    // system->addModule<cart::ImageDisparityDerivativeVisualizationModule>();
 
     // auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 9), std::make_pair(-3, 3));
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
@@ -51,10 +54,11 @@ int main(int argc, char* argv[]) {
 
     CARTSLAM_START_AVERAGE_TIMING(system);
 
+    auto logger = cart::getLogger("main");
+
     boost::future<void> last;
 
-    int i = 0;
-    while (dataSource->hasNext() && i++ < 300) {
+    while (dataSource->hasNext()) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
@@ -62,6 +66,17 @@ int main(int argc, char* argv[]) {
 
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
+
+        // Skip a few frames
+        int i = 0;
+        cv::cuda::Stream stream;
+        while (dataSource->hasNext() && i < 10) {
+            LOG4CXX_DEBUG(logger, "Skipping frame " << i);
+            dataSource->getNext(logger, stream);
+            i++;
+        }
+
+        stream.waitForCompletion();
     }
 
     last.wait();

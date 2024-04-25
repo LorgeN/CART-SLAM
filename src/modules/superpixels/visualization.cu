@@ -61,5 +61,6 @@ void computeBoundaryOverlay(cv::cuda::GpuMat bgrImage, cv::cuda::GpuMat labelIma
 
     CUDA_SAFE_CALL(logger, cudaGetLastError());
     CUDA_SAFE_CALL(logger, cudaStreamSynchronize(stream));
+    CUDA_SAFE_CALL(logger, cudaStreamDestroy(stream));
 }
 }  // namespace cart::contour

@@ -29,6 +29,7 @@ add_executable( cart_slam
     src/logging.cpp 
     src/modules/features.cpp 
     src/modules/optflow.cpp
+    src/modules/disparity/derivative.cu
     src/modules/disparity/disparity.cu
     src/modules/disparity/interpolation.cu
     src/modules/planeseg/planeseg.cu
@@ -48,12 +49,14 @@ add_executable( cart_slam
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
-    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING ) 
+    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo> ) 
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
+    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo> ) 
 endif()
 
 target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_VERSION=3 )

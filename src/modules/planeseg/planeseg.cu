@@ -55,7 +55,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     size_t outputRowStep = output.step / sizeof(derivative_t);
     size_t sharedRowStep = X_BATCH * blockDim.x;
 
-    copyToShared<cart::disparity_t>(sharedDisparity, disparity, X_BATCH, Y_BATCH, LOW_PASS_FILTER_PADDING, 0, width, height);
+    cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(sharedDisparity, disparity, LOW_PASS_FILTER_PADDING, 0);
 
     __syncthreads();
 
@@ -165,8 +165,8 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
                                cv::cuda::PtrStepSz<uint8_t> planes,
                                cart::PlaneParameters params,
                                cv::cuda::PtrStepSz<uint8_t> smoothedPlanes,
-                               cv_mat_ptr_t<uint8_t>* previousPlanes,
-                               cv_mat_ptr_t<optical_flow_t>* previousOpticalFlow,
+                               cart::cv_mat_ptr_t<uint8_t>* previousPlanes,
+                               cart::cv_mat_ptr_t<optical_flow_t>* previousOpticalFlow,
                                int previousPlanesCount) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -212,7 +212,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
             int y = pixelY + i;
 
             for (int k = 0; k < previousPlanesCount; k++) {
-                cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
+                cart::cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
                 optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(optical_flow_t))];
                 optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(optical_flow_t))];
 
@@ -230,7 +230,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
                     continue;
                 }
 
-                cv_mat_ptr_t previousPlane = previousPlanes[k];
+                cart::cv_mat_ptr_t previousPlane = previousPlanes[k];
                 int previousPlaneValue = previousPlane.data[INDEX(x, y, previousPlane.step / sizeof(uint8_t))];
                 votes[previousPlaneValue]++;
             }
@@ -288,6 +288,7 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+        CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
     }
 
     LOG4CXX_DEBUG(this->logger, "Derivatives calculated");
@@ -355,6 +356,7 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+        CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
     }
 
     if (this->useTemporalSmoothing) {

@@ -92,6 +92,7 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
 
             output.download(image, cvStream);
             CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+            CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 
             if (unsmoothed) {
                 cv::Mat stacked;

@@ -30,7 +30,6 @@ namespace cart::contour {
  */
 class CompactnessFeature : public IFeature {
    private:
-    double featureWeight;                                   ///< the weight with which to multiply computed costs before returning them
     std::vector<LabelStatisticsGauss> labelStatisticsPosX;  ///< the statistics of x-positions of all labels
     std::vector<LabelStatisticsGauss> labelStatisticsPosY;  ///< the statistics of y-positions of all labels
 
@@ -45,12 +44,6 @@ class CompactnessFeature : public IFeature {
                           LabelStatisticsGauss& labelStatsOldLabelPosY, LabelStatisticsGauss& labelStatsNewLabelPosY) const;
 
    public:
-    /**
-     * @brief Set the weight to use when computing this feature's cost.
-     * @param compactnessWeight weight (factor) with which to multiply the cost before returning it
-     */
-    void setWeight(double const& compactnessWeight);
-
     /**
      * @brief Estimate the statistics of the spatial distribution for each label.
      * @param labelImage contains the label identifier to which each pixel is assigned
@@ -72,7 +65,7 @@ class CompactnessFeature : public IFeature {
      * added (since we use log-likelihoods) does not hold here.
      */
     double calculateCost(cv::Point2i const& curPixelCoords,
-                         label_t const& oldLabel, label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels) const;
+                         label_t const& oldLabel, label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels) const override;
 
     /**
      * @brief Update label statistics to reflect a label change of the given pixel.
@@ -82,6 +75,6 @@ class CompactnessFeature : public IFeature {
      * @param labelStatsOldLabelPosY label statistics for y-positions of the old label (will be updated)
      * @param labelStatsNewLabelPosY label statistics for y-positions of the new label (will be updated)
      */
-    void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel);
+    void updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) override;
 };
 }  // namespace cart::contour

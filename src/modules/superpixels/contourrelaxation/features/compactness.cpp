@@ -41,12 +41,6 @@ void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords,
     updateCompactnessCost(labelStatsNewLabelPosY);
 }
 
-void CompactnessFeature::setWeight(double const& compactnessWeight) {
-    assert(compactnessWeight >= 0);
-
-    featureWeight = compactnessWeight;
-}
-
 void CompactnessFeature::initializeStatistics(cv::Mat const& labelImage, const label_t maxLabelId) {
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
@@ -130,7 +124,7 @@ double CompactnessFeature::calculateCost(cv::Point2i const& curPixelCoords,
         featureCost += curLabelStatsPosY->featureCost;
     }
 
-    return featureWeight * featureCost;
+    return featureCost;
 }
 
 void CompactnessFeature::updateStatistics(cv::Point2i const& curPixelCoords, label_t const& oldLabel,

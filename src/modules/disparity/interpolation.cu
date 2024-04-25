@@ -9,7 +9,7 @@
 #define X_BATCH 4
 #define Y_BATCH 4
 
-#define SHARED_SIZE(radius) ((X_BATCH * ((radius - 1) * 2 + THREADS_PER_BLOCK_X)) * (Y_BATCH * ((radius - 1) * 2 + THREADS_PER_BLOCK_Y)) * sizeof(cart::disparity_t))
+#define SHARED_SIZE(radius) (((X_BATCH * THREADS_PER_BLOCK_X + (radius - 1) * 2) * (Y_BATCH * THREADS_PER_BLOCK_Y + (radius - 1) * 2)) * sizeof(cart::disparity_t))
 
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, radius - 1, radius - 1, sharedRowStep)
 
@@ -27,7 +27,7 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
 
     size_t sharedRowStep = X_BATCH * blockDim.x;
 
-    copyToShared<cart::disparity_t>(shared, disparity, X_BATCH, Y_BATCH, radius - 1, radius - 1, width, height);
+    cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(shared, disparity, radius - 1, radius - 1);
 
     __syncthreads();
 
@@ -97,7 +97,9 @@ void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cud
     cudaStream_t cudaStream = cv::cuda::StreamAccessor::getStream(stream);
 
     LOG4CXX_DEBUG(logger, "Launching kernel with " << numBlocks.x << "x" << numBlocks.y << " blocks and " << threadsPerBlock.x << "x" << threadsPerBlock.y << " threads per block");
+
     interpolateKernel<<<numBlocks, threadsPerBlock, sharedSize, cudaStream>>>(disparity, radius, width, height, iterations);
+
     CUDA_SAFE_CALL(logger, cudaGetLastError());
 }
 }  // namespace cart::disparity

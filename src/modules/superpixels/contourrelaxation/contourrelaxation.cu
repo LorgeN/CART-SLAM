@@ -28,7 +28,7 @@ __global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> la
     size_t sharedRowStep = X_BATCH * blockDim.x;
     size_t outStep = out.step / sizeof(uint8_t);
 
-    copyToShared<cart::contour::label_t>(sharedLabels, labels, X_BATCH, Y_BATCH, 1, 1, labels.cols, labels.rows);
+    cart::copyToShared<cart::contour::label_t, X_BATCH, Y_BATCH, false>(sharedLabels, labels, 1, 1);
 
     __syncthreads();
 
@@ -63,63 +63,20 @@ __global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> la
 }
 
 namespace cart::contour {
-
-/**
- * @brief Constructor. Create a ContourRelaxation object with the specified features enabled.
- * @param features contains the features to be enabled
- */
-ContourRelaxation::ContourRelaxation(std::vector<FeatureType> features, const cv::Mat initialLabelImage, const double directCliqueCost,
+ContourRelaxation::ContourRelaxation(const cv::Mat initialLabelImage, const double directCliqueCost,
                                      const double diagonalCliqueCost) : directCliqueCost(directCliqueCost), diagonalCliqueCost(diagonalCliqueCost) {
-    // First set all features to disabled.
-    this->grayvalueFeatureEnabled = false;
-    this->colorFeatureEnabled = false;
-    this->compactnessFeatureEnabled = false;
-    this->allFeatures = std::vector<boost::shared_ptr<IFeature>>();
-
-    initialLabelImage.copyTo(this->labelImage);
-
-    // Remove duplicates from the vector of features.
-    // First sort the vector, then remove consecutive duplicates, then resize.
-    std::sort(features.begin(), features.end());
-    typename std::vector<FeatureType>::iterator newVecEnd = std::unique(features.begin(), features.end());
-    features.resize(newVecEnd - features.begin());
-
-    // Now each feature type can only occur once or not at all in the features vector, so we can just create
-    // one feature object for each found feature type without further checking.
-    for (std::vector<FeatureType>::const_iterator it_curFeature = features.begin();
-         it_curFeature != features.end(); ++it_curFeature) {
-        switch (*it_curFeature) {
-            case Grayvalue:
-                grayvalueFeature = boost::make_shared<GrayvalueFeature>();
-                allFeatures.push_back(grayvalueFeature);
-                grayvalueFeatureEnabled = true;
-                break;
-
-            case Color:
-                colorFeature = boost::make_shared<ColorFeature>();
-                allFeatures.push_back(colorFeature);
-                colorFeatureEnabled = true;
-                break;
-
-            case Compactness:
-                compactnessFeature = boost::make_shared<CompactnessFeature>();
-                allFeatures.push_back(compactnessFeature);
-                compactnessFeatureEnabled = true;
-                break;
-        }
-    }
+    this->labelImage = initialLabelImage;
 }
 
-/**
- * @brief Apply Contour Relaxation to the given label image, with the features enabled in this ContourRelaxation object.
- * @param labelImage the input label image, containing one label identifier per pixel
- * @param numIterations number of iterations of Contour Relaxation to be performed (one iteration can include multiple passes)
- * @param out_labelImage the resulting label image after Contour Relaxation, will be (re)allocated if necessary
- *
- * One iteration of Contour Relaxation may pass over the image multiple times, in changing directions, in order to
- * mitigate the dependency of the result on the chosen order in which pixels are processed. This dependency comes from
- * the greedy nature of the performed optimization.
- */
+void ContourRelaxation::addFeature(boost::shared_ptr<IFeature> feature, const double weight) {
+    FeatureContainer container = {
+        .feature = feature,
+        .weight = weight,
+    };
+
+    this->features.push_back(container);
+}
+
 void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray out_labelImage) {
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
@@ -129,8 +86,8 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
 
     CARTSLAM_START_TIMING(initializeStats);
     // Compute the initial statistics of all labels given in the label image, for all features.
-    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-        (*it_curFeature)->initializeStatistics(this->labelImage, this->maxLabelId);
+    for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
+        (*it_curFeature).feature->initializeStatistics(this->labelImage, this->maxLabelId);
     }
 
     CARTSLAM_END_TIMING(initializeStats);
@@ -194,8 +151,8 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
                 // If we have found a better label for the pixel, update the statistics for all features
                 // and change the label of the pixel.
                 if (bestLabel != this->labelImage.at<label_t>(curPixelCoords)) {
-                    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-                        (*it_curFeature)->updateStatistics(curPixelCoords, this->labelImage.at<label_t>(curPixelCoords), bestLabel);
+                    for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
+                        (*it_curFeature).feature->updateStatistics(curPixelCoords, this->labelImage.at<label_t>(curPixelCoords), bestLabel);
                     }
 
                     this->labelImage.at<label_t>(curPixelCoords) = bestLabel;
@@ -221,12 +178,6 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
     }
 }
 
-/**
- * @brief Get all labels in the 8-neighbourhood of a pixel, including the label of the center pixel itself.
- * @param labelImage the current label image, contains one label identifier per pixel
- * @param curPixelCoords the coordinates of the regarded pixel
- * @return a vector containing all labels in the neighbourhood, each only once, sorted in ascending order
- */
 std::vector<label_t> ContourRelaxation::getNeighbourLabels(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords)
     const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
@@ -264,14 +215,6 @@ std::vector<label_t> ContourRelaxation::getNeighbourLabels(cv::Mat const& labelI
     return neighbourLabels;
 }
 
-/**
- * @brief Calculate the total cost of all labels in the 8-neighbourhood of a pixel, assuming the pixel would change its label.
- * @param labelImage the current label image, contains one label identifier per pixel
- * @param curPixelCoords coordinates of the regarded pixel
- * @param pretendLabel assumed new label of the regarded pixel
- * @param neighbourLabels all labels in the neighbourhood of the regarded pixel, including the label of the pixel itself
- * @return the total cost, summed over all labels in the neighbourhood and all enabled features, plus the Markov clique costs
- */
 double ContourRelaxation::calculateCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
                                         label_t const& pretendLabel, std::vector<label_t> const& neighbourLabels) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
@@ -283,20 +226,13 @@ double ContourRelaxation::calculateCost(cv::Mat const& labelImage, cv::Point2i c
     // Calculate and add up the costs of all features.
     label_t const oldLabel = labelImage.at<label_t>(curPixelCoords);
 
-    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-        cost += (*it_curFeature)->calculateCost(curPixelCoords, oldLabel, pretendLabel, neighbourLabels);
+    for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
+        cost += (*it_curFeature).weight * (*it_curFeature).feature->calculateCost(curPixelCoords, oldLabel, pretendLabel, neighbourLabels);
     }
 
     return cost;
 }
 
-/**
- * @brief Calculate the Markov clique cost of a pixel, assuming it would change its label.
- * @param labelImage the current label image, contains one label identifier per pixel
- * @param curPixelCoords coordinates of the regarded pixel
- * @param pretendLabel assumed new label of the regarded pixel
- * @return the total Markov clique cost for the given label at the given pixel coordinates
- */
 double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
                                               label_t const& pretendLabel) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
@@ -354,11 +290,6 @@ double ContourRelaxation::calculateCliqueCost(cv::Mat const& labelImage, cv::Poi
     return numDirectCliques * directCliqueCost + numDiagonalCliques * diagonalCliqueCost;
 }
 
-/**
- * @brief Create a binary map highlighting pixels on the boundary of their respective labels (1 for boundary pixels, 0 otherwise).
- * @param labelImage the current label image, contains one label identifier per pixel
- * @param out_boundaryMap the resulting boundary map, will be (re)allocated if necessary, binary by nature but stored as unsigned char
- */
 void ContourRelaxation::computeBoundaryMap(cv::Mat const& labelImage, cv::Mat& out_boundaryMap) const {
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
@@ -450,12 +381,6 @@ void ContourRelaxation::computeBoundaryMapSmall(cv::Mat const& labelImage, cv::M
     }
 }
 
-/**
- * @brief Update a boundary map to reflect a label change of a single pixel.
- * @param labelImage the current label image (after the label change), contains one label identifier per pixel
- * @param curPixelCoords the coordinates of the changed pixel
- * @param boundaryMap the boundary map before the label change, will be updated if necessary to be consistent with the change
- */
 void ContourRelaxation::updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i const& curPixelCoords,
                                           cv::Mat& boundaryMap) const {
     // Update the boundary map in the 8-neighbourhood around curPixelCoords.
@@ -511,23 +436,9 @@ void ContourRelaxation::updateBoundaryMap(cv::Mat const& labelImage, cv::Point2i
     boundaryMap5by5(tempBoundaryMapWin3by3).copyTo(boundaryMap3Window);
 }
 
-/**
- * @brief Set the data for all features.
- * @param data the data to be set for all features
- */
-void ContourRelaxation::setData(const cv::Mat& data) {
-    for (FeatureIterator it_curFeature = allFeatures.begin(); it_curFeature != allFeatures.end(); ++it_curFeature) {
-        (*it_curFeature)->setData(data);
+void ContourRelaxation::setData(const DataType type, const cv::Mat& data) {
+    for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
+        (*it_curFeature).feature->setData(type, data);
     }
-}
-
-/**
- * @brief Set the compactness weight for the compactness feature.
- * @param compactnessWeight the compactness weight to be multiplied with the compactness cost before returning that
- */
-void ContourRelaxation::setCompactnessData(double const& compactnessWeight) {
-    assert(compactnessFeatureEnabled == true);
-
-    compactnessFeature->setWeight(compactnessWeight);
 }
 }  // namespace cart::contour

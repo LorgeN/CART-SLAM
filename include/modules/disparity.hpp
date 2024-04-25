@@ -6,10 +6,11 @@
 
 #include "cartslam.hpp"
 #include "datasource.hpp"
+#include "modules/disparity/interpolation.cuh"
 #include "utils/ui.hpp"
-#include "modules/disparity/interpolation.cuh"  
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
+#define CARTSLAM_KEY_DISPARITY_DERIVATIVE "disparity_derivative"
 
 #define CARTSLAM_DISPARITY_INVALID -1
 
@@ -18,6 +19,7 @@
 
 namespace cart {
 typedef int16_t disparity_t;
+typedef int16_t derivative_t;
 
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
@@ -57,6 +59,25 @@ class ImageDisparityVisualizationModule : public SystemModule {
     };
 
     boost::future<system_data_t> run(System& system, SystemRunData& data) override;
+
+   private:
+    boost::shared_ptr<ImageProvider> imageThread;
+};
+
+class ImageDisparityDerivativeModule : public SyncWrapperSystemModule {
+   public:
+    ImageDisparityDerivativeModule() : SyncWrapperSystemModule("ImageDisparityDerivative", {CARTSLAM_KEY_DISPARITY}){};
+
+    system_data_t runInternal(System& system, SystemRunData& data) override;
+};
+
+class ImageDisparityDerivativeVisualizationModule : public SyncWrapperSystemModule {
+   public:
+    ImageDisparityDerivativeVisualizationModule() : SyncWrapperSystemModule("ImageDisparityDerivativeVisualization", {CARTSLAM_KEY_DISPARITY_DERIVATIVE}) {
+        this->imageThread = ImageProvider::create("Disparity Derivative");
+    };
+
+    system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
     boost::shared_ptr<ImageProvider> imageThread;

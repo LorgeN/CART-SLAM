@@ -27,11 +27,13 @@ void drawOpticalFlowInternal(const cv::Mat_<float> &flowx, const cv::Mat_<float>
                 if (!isFlowCorrect(u))
                     continue;
 
-                float value = sqrt(u.x * u.x + u.y * u.y);
+                float value = u.x * u.x + u.y * u.y;
                 maxrad = maxrad > value ? maxrad : value;
             }
         }
     }
+
+    maxrad = sqrt(maxrad);
 
 #pragma omp parallel for
     for (int y = 0; y < flowx.rows; ++y) {
