@@ -13,18 +13,18 @@
 // Since color images generate a total of 3 cost terms for the separate channels, we choose
 // the compactness weight at 3 times the value for grayvalue images to preserve the relative weighting.
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-#define CARTSLAM_DEFAULT_COMPACTNESS_WEIGHT 0.01
+#define CARTSLAM_DEFAULT_COMPACTNESS_WEIGHT 0.015
 #else
-#define CARTSLAM_DEFAULT_COMPACTNESS_WEIGHT 0.03
+#define CARTSLAM_DEFAULT_COMPACTNESS_WEIGHT 0.045
 #endif
 
 namespace cart {
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
-        const unsigned int numIterations = 3,
-        const unsigned int blockWidth = 20,
-        const unsigned int blockHeight = 20,
+        const unsigned int initialIterations = 5,
+        const unsigned int blockWidth = 15,
+        const unsigned int blockHeight = 15,
         const double directCliqueCost = 0.3,
         const double compactnessWeight = CARTSLAM_DEFAULT_COMPACTNESS_WEIGHT);
 
@@ -32,7 +32,7 @@ class SuperPixelModule : public SyncWrapperSystemModule {
 
    private:
     boost::shared_ptr<contour::ContourRelaxation> contourRelaxation;
-    const unsigned int numIterations;
+    const unsigned int initialIterations;
     boost::mutex mutex;  // Mutex to protect the contour relaxation object
 };
 

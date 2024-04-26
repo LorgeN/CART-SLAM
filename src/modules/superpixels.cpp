@@ -9,13 +9,13 @@
 
 namespace cart {
 SuperPixelModule::SuperPixelModule(
-    const unsigned int numIterations,
+    const unsigned int initialIterations,
     const unsigned int blockWidth,
     const unsigned int blockHeight,
     const double directCliqueCost,
     const double compactnessWeight)
     : SuperPixelModule::SyncWrapperSystemModule("SuperPixelDetect", {CARTSLAM_KEY_DISPARITY_DERIVATIVE}),
-      numIterations(numIterations) {
+      initialIterations(initialIterations) {
     if (blockWidth < 1 || blockHeight < 1) {
         throw std::invalid_argument("blockWidth and blockHeight must be more than 1");
     }
@@ -64,6 +64,8 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
 
     stream.waitForCompletion();
 
+    const unsigned int numIterations = data.id == 1 ? this->initialIterations : 1;
+
     cv::Mat relaxedLabelImage;
 
     {
@@ -71,7 +73,7 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
         boost::lock_guard<boost::mutex> lock(this->mutex);
         this->contourRelaxation->setData(contour::DataType::Image, imageCpu);
         this->contourRelaxation->setData(contour::DataType::Disparity, disparityCpu);
-        this->contourRelaxation->relax(this->numIterations, relaxedLabelImage);
+        this->contourRelaxation->relax(numIterations, relaxedLabelImage);
     }
 
     return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, cv::Mat, relaxedLabelImage);

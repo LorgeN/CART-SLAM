@@ -280,15 +280,15 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
             this->derivativeHistogram.setTo(0);
         }
 
-        cv::cuda::Stream cvStream;
-        cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
+        cudaStream_t derivativeStream;
+        CUDA_SAFE_CALL(this->logger, cudaStreamCreate(&derivativeStream));
 
-        calculateDerivatives<<<numBlocks, threadsPerBlock, 0, stream>>>(*disparity, derivatives, histogramTempStorage, disparity->cols, disparity->rows);
-        histogramMerge<<<1, 256, 0, stream>>>(histogramTempStorage, this->derivativeHistogram, totalBlocks);
+        calculateDerivatives<<<numBlocks, threadsPerBlock, 0, derivativeStream>>>(*disparity, derivatives, histogramTempStorage, disparity->cols, disparity->rows);
+        histogramMerge<<<1, 256, 0, derivativeStream>>>(histogramTempStorage, this->derivativeHistogram, totalBlocks);
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
-        CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
-        CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
+        CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(derivativeStream));
+        CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(derivativeStream));
     }
 
     LOG4CXX_DEBUG(this->logger, "Derivatives calculated");
@@ -300,6 +300,9 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
     int previousPlaneCount = 0;
     cv_mat_ptr_t<uint8_t>* devicePrevPlanes = nullptr;
     cv_mat_ptr_t<optical_flow_t>* devicePrevOpticalFlow = nullptr;
+
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
 
     if (this->useTemporalSmoothing && data.id > 1) {
         LOG4CXX_DEBUG(this->logger, "Using temporal smoothing");
@@ -340,30 +343,27 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
             }
         }
 
-        CUDA_SAFE_CALL(this->logger, cudaMalloc(&devicePrevPlanes, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>)));
-        CUDA_SAFE_CALL(this->logger, cudaMemcpy(devicePrevPlanes, previousPlanesHost, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>), cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&devicePrevPlanes, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>), stream));
+        CUDA_SAFE_CALL(this->logger, cudaMemcpyAsync(devicePrevPlanes, previousPlanesHost, previousPlaneCount * sizeof(cv_mat_ptr_t<uint8_t>), cudaMemcpyHostToDevice, stream));
 
-        CUDA_SAFE_CALL(this->logger, cudaMalloc(&devicePrevOpticalFlow, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>)));
-        CUDA_SAFE_CALL(this->logger, cudaMemcpy(devicePrevOpticalFlow, previousOpticalFlowHost, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>), cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&devicePrevOpticalFlow, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>), stream));
+        CUDA_SAFE_CALL(this->logger, cudaMemcpyAsync(devicePrevOpticalFlow, previousOpticalFlowHost, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>), cudaMemcpyHostToDevice, stream));
     }
 
-    {
-        cudaStream_t stream;
-        cudaStreamCreate(&stream);
+    PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
+    classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, params, smoothed, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount);
 
-        PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
-        classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(derivatives, planes, params, smoothed, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount);
-
-        CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
-        CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
-        CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
+    if (data.id > 1 && this->useTemporalSmoothing) {
+        CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevPlanes, stream));
+        CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevOpticalFlow, stream));
     }
+
+    CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
+    CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+    CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 
     if (this->useTemporalSmoothing) {
-        if (data.id > 1) {
-            CUDA_SAFE_CALL(this->logger, cudaFree(devicePrevPlanes));
-            CUDA_SAFE_CALL(this->logger, cudaFree(devicePrevOpticalFlow));
-        } else {
+        if (data.id == 1) {
             // Return both as the same, since this is the first run
             LOG4CXX_DEBUG(this->logger, "Returning planes as both smoothed and unsmoothed");
             auto ptr = boost::make_shared<cv::cuda::GpuMat>(boost::move(planes));

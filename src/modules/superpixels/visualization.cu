@@ -21,8 +21,8 @@ __global__ void overlayBoundaryVisualization(cv::cuda::PtrStepSz<uint8_t> bgrIma
             }
 
             uint8_t b = bgrImage[INDEX_BGR(x + j, y + i, 0, bgrStep)];
-            uint8_t g = bgrImage[INDEX_BGR(x + j, y + i, 0, bgrStep)];
-            uint8_t r = bgrImage[INDEX_BGR(x + j, y + i, 0, bgrStep)];
+            uint8_t g = bgrImage[INDEX_BGR(x + j, y + i, 1, bgrStep)];
+            uint8_t r = bgrImage[INDEX_BGR(x + j, y + i, 2, bgrStep)];
 
             cart::contour::label_t label = labels[INDEX(x + j, y + i, labelsStep)];
             cart::contour::label_t right = labels[INDEX(x + j + 1, y + i, labelsStep)];

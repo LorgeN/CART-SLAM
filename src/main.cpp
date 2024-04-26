@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
     system->addModule<cart::SuperPixelModule>();
     system->addModule<cart::SuperPixelVisualizationModule>();
 
-    // system->addModule<cart::ImageOpticalFlowModule>();
+    system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
     system->addModule<cart::ZEDImageDisparityModule>();
@@ -62,24 +62,13 @@ int main(int argc, char* argv[]) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
-        last = system->run();
+        system->run().wait();
 
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
-
-        // Skip a few frames
-        int i = 0;
-        cv::cuda::Stream stream;
-        while (dataSource->hasNext() && i < 10) {
-            LOG4CXX_DEBUG(logger, "Skipping frame " << i);
-            dataSource->getNext(logger, stream);
-            i++;
-        }
-
-        stream.waitForCompletion();
     }
 
-    last.wait();
+    //last.wait();
 
     system->getThreadPool().join();
 

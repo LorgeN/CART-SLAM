@@ -50,13 +50,13 @@ add_executable( cart_slam
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING ) 
-    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo> ) 
+    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo -Xcompiler=-fopenmp> ) 
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
-    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo> ) 
+    target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo -Xcompiler=-fopenmp> ) 
 endif()
 
 target_compile_definitions( cart_slam PRIVATE BOOST_THREAD_VERSION=3 )

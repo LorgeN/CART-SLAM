@@ -117,4 +117,15 @@ cv::Point2i TraversionGenerator::end() const {
     // and which will be used to signal the end of the traversion to the calling function.
     return cv::Point2i(-1, -1);
 }
+
+void getPointsAsVector(cv::Size imageSize, std::vector<cv::Point2i> &points) {
+    points.reserve(imageSize.width * imageSize.height);
+    TraversionGenerator travGen;
+
+    cv::Point2i curPoint = travGen.begin(imageSize);
+    while (curPoint != travGen.end()) {
+        points.push_back(curPoint);
+        curPoint = travGen.nextPixel();
+    }
+}
 }  // namespace cart::contour

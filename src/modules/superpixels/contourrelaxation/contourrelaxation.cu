@@ -84,27 +84,23 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
     cv::minMaxIdx(this->labelImage, nullptr, &maxLabelDbl, nullptr, nullptr, cv::noArray());
     this->maxLabelId = static_cast<label_t>(maxLabelDbl);
 
-    CARTSLAM_START_TIMING(initializeStats);
-    // Compute the initial statistics of all labels given in the label image, for all features.
+// Compute the initial statistics of all labels given in the label image, for all features.
+#pragma omp parallel for
     for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
         (*it_curFeature).feature->initializeStatistics(this->labelImage, this->maxLabelId);
     }
 
-    CARTSLAM_END_TIMING(initializeStats);
-
     // Create the initial boundary map.
-    CARTSLAM_START_TIMING(boundaryMap);
     computeBoundaryMap(this->labelImage, this->boundaryMap);
-    CARTSLAM_END_TIMING(boundaryMap);
 
     // Create a traversion generator object, which will give us all the pixel coordinates in the current image
     // in all traversion orders specified inside that class. We will just need to loop over the coordinates
     // we receive by this object.
-    TraversionGenerator traversionGen;
 
-    CARTSLAM_START_AVERAGE_TIMING(neighbour);
     CARTSLAM_START_AVERAGE_TIMING(iteration);
-    CARTSLAM_START_AVERAGE_TIMING(calcCost);
+
+    std::vector<cv::Point2i> pixels;
+    getPointsAsVector(labelImage.size(), pixels);
 
     // Loop over specified number of iterations.
     for (unsigned int curIteration = 0; curIteration < numIterations; ++curIteration) {
@@ -113,18 +109,16 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
         // but also resets all internal counters.
         CARTSLAM_START_TIMING(iteration);
 
-        for (cv::Point2i curPixelCoords = traversionGen.begin(labelImage.size()); curPixelCoords != traversionGen.end();
-             curPixelCoords = traversionGen.nextPixel()) {
+        // TODO: Parallelize this loop.
+#pragma omp parallel for
+        for (auto curPixelCoords : pixels) {
             if (BOOST_LIKELY(boundaryMap.at<unsigned char>(curPixelCoords) == 0)) {
                 // We are not at a boundary pixel, no further processing necessary.
                 continue;
             }
 
-            CARTSLAM_START_TIMING(neighbour);
             // Get all neighbouring labels. This vector also contains the label of the current pixel itself.
             std::vector<label_t> const neighbourLabels = getNeighbourLabels(this->labelImage, curPixelCoords);
-            CARTSLAM_END_TIMING_SILENT(neighbour);
-            CARTSLAM_INCREMENT_AVERAGE_TIMING(neighbour);
 
             // If we have more than one label in the neighbourhood, the current pixel is a boundary pixel
             // and optimization will be carried out. Else, the neighbourhood only contains the label of the
@@ -134,7 +128,6 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
                 double minCost = std::numeric_limits<double>::max();
                 double bestLabel = this->labelImage.at<label_t>(curPixelCoords);
 
-                CARTSLAM_START_TIMING(calcCost);
                 for (typename std::vector<label_t>::const_iterator it_neighbourLabel = neighbourLabels.begin();
                      it_neighbourLabel != neighbourLabels.end(); ++it_neighbourLabel) {
                     double cost = calculateCost(this->labelImage, curPixelCoords, *it_neighbourLabel, neighbourLabels);
@@ -145,20 +138,20 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
                     }
                 }
 
-                CARTSLAM_END_TIMING_SILENT(calcCost);
-                CARTSLAM_INCREMENT_AVERAGE_TIMING(calcCost);
-
                 // If we have found a better label for the pixel, update the statistics for all features
                 // and change the label of the pixel.
                 if (bestLabel != this->labelImage.at<label_t>(curPixelCoords)) {
-                    for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
-                        (*it_curFeature).feature->updateStatistics(curPixelCoords, this->labelImage.at<label_t>(curPixelCoords), bestLabel);
+#pragma omp critical
+                    {
+                        for (FeatureIterator it_curFeature = this->features.begin(); it_curFeature != this->features.end(); ++it_curFeature) {
+                            (*it_curFeature).feature->updateStatistics(curPixelCoords, this->labelImage.at<label_t>(curPixelCoords), bestLabel);
+                        }
+
+                        this->labelImage.at<label_t>(curPixelCoords) = bestLabel;
+
+                        // We also need to update the boundary map around the current pixel.
+                        updateBoundaryMap(this->labelImage, curPixelCoords, boundaryMap);
                     }
-
-                    this->labelImage.at<label_t>(curPixelCoords) = bestLabel;
-
-                    // We also need to update the boundary map around the current pixel.
-                    updateBoundaryMap(this->labelImage, curPixelCoords, boundaryMap);
                 }
             }
         }
@@ -167,9 +160,7 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
         CARTSLAM_INCREMENT_AVERAGE_TIMING(iteration);
     }
 
-    CARTSLAM_END_AVERAGE_TIMING(neighbour);
     CARTSLAM_END_AVERAGE_TIMING(iteration);
-    CARTSLAM_END_AVERAGE_TIMING(calcCost);
 
     // Return the resulting label image.
     if (out_labelImage.needed() && out_labelImage.isMat()) {

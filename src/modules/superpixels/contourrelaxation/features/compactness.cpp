@@ -120,8 +120,7 @@ double CompactnessFeature::calculateCost(cv::Point2i const& curPixelCoords,
         }
 
         // Add the cost of the current region.
-        featureCost += curLabelStatsPosX->featureCost;
-        featureCost += curLabelStatsPosY->featureCost;
+        featureCost += curLabelStatsPosX->featureCost + curLabelStatsPosY->featureCost;
     }
 
     return featureCost;

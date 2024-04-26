@@ -58,4 +58,6 @@ class TraversionGenerator {
 
     cv::Point2i end() const;
 };
+
+void getPointsAsVector(cv::Size imageSize, std::vector<cv::Point2i> &points);
 }  // namespace cart::contour
