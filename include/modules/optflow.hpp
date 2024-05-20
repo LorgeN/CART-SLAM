@@ -12,6 +12,9 @@
 #define CARTSLAM_KEY_OPTFLOW "optflow"
 
 namespace cart {
+    
+typedef int16_t optical_flow_t;
+
 cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &stream);
 
 struct image_optical_flow_t {

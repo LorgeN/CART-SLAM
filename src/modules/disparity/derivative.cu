@@ -22,8 +22,15 @@
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 1, 1, sharedRowStep)
 
 __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity,
-                                                cv::cuda::PtrStepSz<cart::derivative_t> output) {
+                                                cv::cuda::PtrStepSz<cart::derivative_t> output,
+                                                cv::cuda::PtrStepSz<int> histogramOutput) {
     __shared__ cart::disparity_t sharedDisparity[SHARED_SIZE];
+    __shared__ int localHistogram[256 * 2];  // 2 channels
+
+    // Initialize histogram to 0
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < 512; i += blockDim.x * blockDim.y) {
+        localHistogram[i] = 0;
+    }
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -64,8 +71,43 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
 
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 0, outputRowStep)] = verticalDerivativeValid ? verticalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 1, outputRowStep)] = horizontalDerivativeValid ? horizontalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
+
+            if (verticalDerivativeValid && verticalDerivative >= -128 && verticalDerivative <= 127) {
+                atomicAdd(&localHistogram[2 * (verticalDerivative + 128)], 1);  // First channel is vertical
+            }
+
+            if (horizontalDerivativeValid && horizontalDerivative >= -128 && horizontalDerivative <= 127) {
+                atomicAdd(&localHistogram[2 * (horizontalDerivative + 128) + 1], 1);  // Second channel is horizontal
+            }
         }
     }
+
+    __syncthreads();
+
+    size_t index = blockIdx.x + blockIdx.y * gridDim.x;
+    size_t histStep = histogramOutput.step / sizeof(int);
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < 512; i += blockDim.x * blockDim.y) {
+        histogramOutput[INDEX(index, i, histStep)] = localHistogram[i];
+    }
+}
+
+__global__ void mergeDerivativeHistograms(cv::cuda::PtrStepSz<int> histogram, cv::cuda::PtrStepSz<int> output, int threadCount) {
+    // Each thread handles one value, for a total of 256 threads
+    int channel = blockIdx.x * blockDim.x + threadIdx.x;
+
+    unsigned int verticalSum = 0;
+    unsigned int horizontalSum = 0;
+
+    size_t histStep = histogram.step / sizeof(int);
+
+    for (int i = 0; i < threadCount; i++) {
+        verticalSum += histogram[INDEX(i * 2, channel, histStep)];
+        horizontalSum += histogram[INDEX(i * 2 + 1, channel, histStep)];
+    }
+
+    output[2 * channel] = verticalSum;
+    output[2 * channel + 1] = horizontalSum;
 }
 
 __global__ void applyFalseColors(cv::cuda::PtrStepSz<cart::derivative_t> derivatives, cv::cuda::PtrStepSz<uint8_t> output, double maxrad) {
@@ -114,16 +156,23 @@ system_data_t ImageDisparityDerivativeModule::runInternal(System& system, System
     dim3 numBlocks((disparity->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
                    (disparity->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
 
+    size_t totalBlocks = numBlocks.x * numBlocks.y;
+    cv::cuda::GpuMat histogramTempStorage(512, totalBlocks, CV_32SC1);
+    cv::cuda::GpuMat histogramOutput(256, 2, CV_32SC1);
+
     cudaStream_t stream;
     CUDA_SAFE_CALL(this->logger, cudaStreamCreate(&stream));
 
-    calculateDirectionalDerivatives<<<numBlocks, threadsPerBlock, 0, stream>>>(*disparity, derivatives);
+    calculateDirectionalDerivatives<<<numBlocks, threadsPerBlock, 0, stream>>>(*disparity, derivatives, histogramTempStorage);
+    mergeDerivativeHistograms<<<1, 256, 0, stream>>>(histogramTempStorage, histogramOutput, totalBlocks);
 
     CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
     CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
     CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_DISPARITY_DERIVATIVE, cv::cuda::GpuMat, derivatives);
+    return MODULE_RETURN_ALL(
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_DISPARITY_DERIVATIVE, cv::cuda::GpuMat, boost::move(derivatives)),
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, cv::cuda::GpuMat, boost::move(histogramOutput)));
 }
 
 system_data_t ImageDisparityDerivativeVisualizationModule::runInternal(System& system, SystemRunData& data) {

@@ -1,5 +1,3 @@
-#include <cuda_runtime.h>
-
 #include <opencv2/core/cuda_stream_accessor.hpp>
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
@@ -28,12 +26,9 @@
 
 #define ROUND_TO_INT(x) static_cast<int32_t>(round(x))
 
-typedef int16_t derivative_t;
-typedef int16_t optical_flow_t;
-
 // TODO: Change disparity values to float?
 __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity,
-                                     cv::cuda::PtrStepSz<derivative_t> output,
+                                     cv::cuda::PtrStepSz<cart::derivative_t> output,
                                      cv::cuda::PtrStepSz<int> histogramOutput, int width, int height) {
     __shared__ cart::disparity_t sharedDisparity[SHARED_SIZE];
     __shared__ int localHistogram[256];
@@ -52,7 +47,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     int pixelX = x * X_BATCH;
     int pixelY = y * Y_BATCH;
 
-    size_t outputRowStep = output.step / sizeof(derivative_t);
+    size_t outputRowStep = output.step / sizeof(cart::derivative_t);
     size_t sharedRowStep = X_BATCH * blockDim.x;
 
     cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(sharedDisparity, disparity, LOW_PASS_FILTER_PADDING, 0);
@@ -63,7 +58,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     // TODO: Evaluate if this is really necessary
     for (int j = 0; j < X_BATCH; j++) {
         // Sliding window sum
-        derivative_t sum = 0;
+        cart::derivative_t sum = 0;
         int count = 0;
 
         cart::disparity_t previous[LOW_PASS_FILTER_PADDING] = {0};
@@ -116,7 +111,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
                 continue;
             }
 
-            derivative_t derivative =
+            cart::derivative_t derivative =
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
                 sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
@@ -145,7 +140,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
     }
 }
 
-__global__ void histogramMerge(cv::cuda::PtrStepSz<int> histogram, cv::cuda::PtrStepSz<int> output, int threadCount) {
+__global__ void mergeHistogram(cv::cuda::PtrStepSz<int> histogram, cv::cuda::PtrStepSz<int> output, int threadCount) {
     // Each thread handles one value, for a total of 256 threads
     int channel = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -161,12 +156,12 @@ __global__ void histogramMerge(cv::cuda::PtrStepSz<int> histogram, cv::cuda::Ptr
     atomicAdd(output + channel, sum);
 }
 
-__global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
+__global__ void classifyPlanes(cv::cuda::PtrStepSz<cart::derivative_t> derivatives,
                                cv::cuda::PtrStepSz<uint8_t> planes,
                                cart::PlaneParameters params,
                                cv::cuda::PtrStepSz<uint8_t> smoothedPlanes,
                                cart::cv_mat_ptr_t<uint8_t>* previousPlanes,
-                               cart::cv_mat_ptr_t<optical_flow_t>* previousOpticalFlow,
+                               cart::cv_mat_ptr_t<cart::optical_flow_t>* previousOpticalFlow,
                                int previousPlanesCount) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -174,7 +169,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
     int pixelX = x * X_BATCH;
     int pixelY = y * Y_BATCH;
 
-    size_t derivativesRowStep = derivatives.step / sizeof(derivative_t);
+    size_t derivativesRowStep = derivatives.step / sizeof(cart::derivative_t);
     size_t planesRowStep = planes.step / sizeof(uint8_t);
 
     int horizontalStart = params.horizontalRange.first;
@@ -189,7 +184,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
                 continue;
             }
 
-            derivative_t derivative = derivatives[INDEX(pixelX + j, pixelY + i, derivativesRowStep)];
+            cart::derivative_t derivative = derivatives[INDEX(pixelX + j, pixelY + i, derivativesRowStep)];
             int plane = cart::Plane::UNKNOWN;
 
             if (derivative != CARTSLAM_DISPARITY_DERIVATIVE_INVALID && derivative >= horizontalStart && derivative < horizontalEnd) {
@@ -213,8 +208,8 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<derivative_t> derivatives,
 
             for (int k = 0; k < previousPlanesCount; k++) {
                 cart::cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
-                optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(optical_flow_t))];
-                optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(optical_flow_t))];
+                cart::optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(cart::optical_flow_t))];
+                cart::optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(cart::optical_flow_t))];
 
                 // Flow values are in S10.5 format. We are only interested in whole integer values
                 flowX >>= 5;
@@ -284,7 +279,7 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
         CUDA_SAFE_CALL(this->logger, cudaStreamCreate(&derivativeStream));
 
         calculateDerivatives<<<numBlocks, threadsPerBlock, 0, derivativeStream>>>(*disparity, derivatives, histogramTempStorage, disparity->cols, disparity->rows);
-        histogramMerge<<<1, 256, 0, derivativeStream>>>(histogramTempStorage, this->derivativeHistogram, totalBlocks);
+        mergeHistogram<<<1, 256, 0, derivativeStream>>>(histogramTempStorage, this->derivativeHistogram, totalBlocks);
 
         CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(derivativeStream));

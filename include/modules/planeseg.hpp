@@ -8,6 +8,7 @@
 #include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/optflow.hpp"
+#include "modules/superpixels.hpp"
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_PLANES "planes"
@@ -17,6 +18,8 @@
 #define CARTSLAM_PLANE_COUNT 3
 
 namespace cart {
+
+
 struct PlaneParameters {
     PlaneParameters(const int horizontalCenter, const int verticalCenter, const std::pair<int, int> horizontalRange, const std::pair<int, int> verticalRange)
         : horizontalCenter(horizontalCenter), verticalCenter(verticalCenter), horizontalRange(horizontalRange), verticalRange(verticalRange){};
@@ -75,6 +78,7 @@ class PlaneParameterProvider {
     }
 
     friend class DisparityPlaneSegmentationModule;
+    friend class SuperPixelDisparityPlaneSegmentationModule;
 
    protected:
     PlaneParameterProvider(const int horizontalCenter = 0, const int verticalCenter = 0, const std::pair<int, int> horizontalRange = std::make_pair(0, 0), const std::pair<int, int> verticalRange = std::make_pair(0, 0))
@@ -128,17 +132,43 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
     const bool useTemporalSmoothing;
     const int updateInterval;
     const int resetInterval;
-
+    
     boost::shared_ptr<PlaneParameterProvider> planeParameterProvider;
 
     boost::shared_mutex derivativeHistogramMutex;
     cv::cuda::GpuMat derivativeHistogram;
 };
 
+class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
+   public:
+    SuperPixelDisparityPlaneSegmentationModule(
+        boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
+        const int updateInterval = 30, const bool useTemporalSmoothing = false)
+        // Need optical flow for temporal smoothing
+        : SyncWrapperSystemModule("SPPlaneSegmentation",
+                                  useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, CARTSLAM_KEY_OPTFLOW}
+                                                       : std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM}),
+          planeParameterProvider(planeParameterProvider),
+          updateInterval(updateInterval),
+          useTemporalSmoothing(useTemporalSmoothing){};
+
+    system_data_t runInternal(System& system, SystemRunData& data) override;
+
+    friend class DisparityPlaneSegmentationVisualizationModule;
+
+   private:
+    void updatePlaneParameters(System& system, SystemRunData& data);
+
+    const bool useTemporalSmoothing;
+    const int updateInterval;
+
+    boost::shared_ptr<PlaneParameterProvider> planeParameterProvider;
+};
+
 class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
    public:
-    DisparityPlaneSegmentationVisualizationModule(bool showHistogram = true, bool showStacked = true) 
-    : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}), showHistogram(showHistogram), showStacked(showStacked){
+    DisparityPlaneSegmentationVisualizationModule(bool showHistogram = true, bool showStacked = true)
+        : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}), showHistogram(showHistogram), showStacked(showStacked) {
         this->imageThread = ImageProvider::create("Plane Segmentation");
         this->histThread = ImageProvider::create("Plane Segmentation Histogram");
     };

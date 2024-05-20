@@ -109,7 +109,7 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
         // but also resets all internal counters.
         CARTSLAM_START_TIMING(iteration);
 
-        // TODO: Parallelize this loop.
+        // TODO: Parallelize this loop further
 #pragma omp parallel for
         for (auto curPixelCoords : pixels) {
             if (BOOST_LIKELY(boundaryMap.at<unsigned char>(curPixelCoords) == 0)) {

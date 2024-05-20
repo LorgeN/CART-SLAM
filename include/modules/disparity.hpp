@@ -11,6 +11,7 @@
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
 #define CARTSLAM_KEY_DISPARITY_DERIVATIVE "disparity_derivative"
+#define CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM "disparity_derivative_histogram"
 
 #define CARTSLAM_DISPARITY_INVALID -1
 
@@ -18,6 +19,7 @@
 #define SGM_P2(blockSize) (8 * blockSize * blockSize)
 
 namespace cart {
+    
 typedef int16_t disparity_t;
 typedef int16_t derivative_t;
 
