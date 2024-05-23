@@ -105,7 +105,7 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
         // Loop over all coordinates received by the traversion generator.
         // It is important to start with begin() here, which does not only set the correct image size,
         // but also resets all internal counters.
-
+        
         // TODO: Parallelize this loop further
 #pragma omp parallel for
         for (auto curPixelCoords : pixels) {

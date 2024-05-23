@@ -40,4 +40,18 @@ log4cxx::LoggerPtr getLogger(const std::string& name) {
 
     return logger;
 }
+
+const std::string getExceptionMessage(const std::exception& e, unsigned int level) {
+    std::stringstream ss;
+
+    ss << e.what() << '\n';
+
+    try {
+        std::rethrow_if_nested(e);
+    } catch (const std::exception& nestedException) {
+        ss << "\t caused by (" << level << "): " << getExceptionMessage(nestedException, level + 1);
+    }
+
+    return ss.str();
+}
 }  // namespace cart

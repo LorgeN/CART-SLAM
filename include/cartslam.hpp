@@ -8,7 +8,7 @@
 #define CARTSLAM_IMAGE_CHANNELS 1
 #else
 #define CARTSLAM_RUN_RETENTION 16
-#define CARTSLAM_CONCURRENT_RUN_LIMIT 8
+#define CARTSLAM_CONCURRENT_RUN_LIMIT 6
 #define CARTSLAM_IMAGE_CHANNELS 3
 #endif
 
@@ -33,7 +33,10 @@ class System;  // Allow references
 
 class SystemRunData : public DataContainer {
    public:
-    SystemRunData(uint32_t id, boost::weak_ptr<System> system, boost::shared_ptr<DataElement> dataElement) : id(id), system(system), dataElement(dataElement) {}
+    SystemRunData(uint32_t id, boost::weak_ptr<System> system, boost::shared_ptr<DataElement> dataElement) : id(id), system(system), dataElement(dataElement) {
+        this->logger = cart::getLogger("Run " + std::to_string(id));
+    }
+
     ~SystemRunData() = default;
 
     void markAsComplete();
@@ -52,6 +55,7 @@ class SystemRunData : public DataContainer {
    private:
     bool complete = false;
     boost::weak_ptr<System> system;
+    log4cxx::LoggerPtr logger;
 };
 
 class SystemModule {

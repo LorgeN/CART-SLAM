@@ -2,11 +2,7 @@
 
 namespace cart {
 log4cxx::LoggerPtr SystemRunData::getLogger() {
-    if (boost::shared_ptr<System> sys = this->system.lock()) {
-        return sys->getLogger();
-    }
-
-    throw std::runtime_error("System has been destroyed");
+    return this->logger;
 }
 
 boost::asio::thread_pool& SystemRunData::getThreadPool() {
@@ -145,7 +141,7 @@ boost::future<void> System::run() {
     std::vector<boost::future<void>> moduleFutures;
 
     for (auto module : this->modules) {
-        auto moduleName = std::quoted(module->name);
+        std::string moduleName = "\"" + module->name + "\"";
         LOG4CXX_INFO(this->logger, "Running module " << moduleName);
         boost::future<system_data_t> future;
 
@@ -158,20 +154,20 @@ boost::future<void> System::run() {
                              try {
                                  future.get();
                              } catch (const std::exception& e) {
-                                 LOG4CXX_ERROR(this->logger, "Error waiting for data: " << e.what());
-                                 throw;
+                                 LOG4CXX_ERROR(runData->getLogger(), "Error waiting for data: " << cart::getExceptionMessage(e));
+                                 std::throw_with_nested(std::runtime_error("Error waiting for data"));
                              }
 
-                             LOG4CXX_DEBUG(this->logger, "All dependencies have been resolved for module " << moduleName);
+                             LOG4CXX_DEBUG(runData->getLogger(), "All dependencies have been resolved for module " << moduleName);
                              return module->run(*this, *runData);
                          })
                          .unwrap();
         } else {
-            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has no dependencies");
+            LOG4CXX_DEBUG(runData->getLogger(), "Module " << moduleName << " has no dependencies");
             future = module->run(*this, *runData);
         }
 
-        LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has been submitted for execution");
+        LOG4CXX_DEBUG(runData->getLogger(), "Module " << moduleName << " has been submitted for execution");
 
         moduleFutures.push_back(future.then([this, runData, moduleName](boost::future<system_data_t> future) {
             system_data_t data;
@@ -179,21 +175,21 @@ boost::future<void> System::run() {
             try {
                 data = future.get();
             } catch (const std::exception& e) {
-                LOG4CXX_ERROR(this->logger, "Error running module " << moduleName << ": " << e.what());
-                throw;
+                LOG4CXX_ERROR(runData->getLogger(), "Error running module " << moduleName << ": " << cart::getExceptionMessage(e));
+                std::throw_with_nested(std::runtime_error("Error running module " + moduleName + " for run ID " + std::to_string(runData->id)));
             }
 
-            LOG4CXX_INFO(this->logger, "Module " << moduleName << " has completed for run ID " << runData->id);
+            LOG4CXX_INFO(runData->getLogger(), "Module " << moduleName << " has completed for run ID " << runData->id);
 
             for (auto data : data) {
-                LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data.first) << " from module " << moduleName << " in run " << runData->id);
+                LOG4CXX_DEBUG(runData->getLogger(), "Got data with key " << std::quoted(data.first) << " from module " << moduleName << " in run " << runData->id);
                 runData->insertData(data);
             }
         }));
     }
 
-    LOG4CXX_DEBUG(this->logger, "All modules have been submitted for execution");
-    log4cxx::LoggerPtr logger = this->logger;
+    LOG4CXX_DEBUG(runData->getLogger(), "All modules have been submitted for execution for run ID " << runData->id);
+    log4cxx::LoggerPtr logger = runData->getLogger();
 
     return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto future) {
         LOG4CXX_DEBUG(logger, "All modules have finished for run with ID " << runData->id);
@@ -205,7 +201,7 @@ boost::future<void> System::run() {
                 moduleFuture.get();
             }
         } catch (const std::exception& e) {
-            LOG4CXX_ERROR(logger, "Run with ID " << runData->id << " has failed: " << e.what());
+            LOG4CXX_ERROR(logger, "Run with ID " << runData->id << " has failed: " << cart::getExceptionMessage(e));
             throw;
         }
 

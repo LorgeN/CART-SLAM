@@ -68,7 +68,6 @@ int main(int argc, char* argv[]) {
                 future.get();
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
-                exit(1);
             }
         });
 

@@ -8,7 +8,7 @@
 #include <boost/thread/future.hpp>
 #include <vector>
 
-#define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 5
+#define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 20
 
 namespace cart {
 typedef std::pair<std::string, boost::shared_ptr<void>> system_data_pair_t;
@@ -16,7 +16,7 @@ typedef std::vector<system_data_pair_t> system_data_t;
 
 class DataNotAvailableException : public std::exception {
    public:
-    DataNotAvailableException(const std::string key) : key(key) {}
+    DataNotAvailableException(const std::string key) : key("Missing key \"" + key + "\"") {}
 
     const char* what() const throw() {
         return this->key.c_str();
