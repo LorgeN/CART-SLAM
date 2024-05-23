@@ -55,14 +55,14 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
 
 boost::future<system_data_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
     boost::packaged_task<system_data_t> task([this, &system, &data] {
-        LOG4CXX_DEBUG(this->logger, "Running module sync wrapper " << std::quoted(this->name));
+        LOG4CXX_DEBUG(this->logger, "Running module sync wrapper " << std::quoted(this->name) << " for ID " << data.id);
         auto value = this->runInternal(system, data);
-        LOG4CXX_DEBUG(this->logger, "Sync wrapper of module " << std::quoted(this->name) << " has completed");
+        LOG4CXX_DEBUG(this->logger, "Sync wrapper of module " << std::quoted(this->name) << " has completed for ID " << data.id);
         return value;
     });
 
     auto future = task.get_future();
-    LOG4CXX_DEBUG(this->logger, "Submitting wrapper task");
+    LOG4CXX_DEBUG(this->logger, "Submitting wrapper task for ID " << data.id);
     boost::asio::post(system.getThreadPool(), boost::move(task));
     return future;
 }
@@ -156,7 +156,7 @@ boost::future<void> System::run() {
             future = runData->waitForData(module->requiresData)
                          .then([this, runData, module, moduleName](boost::future<void> future) {
                              try {
-                                 future.wait();
+                                 future.get();
                              } catch (const std::exception& e) {
                                  LOG4CXX_ERROR(this->logger, "Error waiting for data: " << e.what());
                                  throw;
@@ -183,10 +183,10 @@ boost::future<void> System::run() {
                 throw;
             }
 
-            LOG4CXX_INFO(this->logger, "Module " << moduleName << " has completed");
+            LOG4CXX_INFO(this->logger, "Module " << moduleName << " has completed for run ID " << runData->id);
 
             for (auto data : data) {
-                LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data.first) << " from module " << moduleName);
+                LOG4CXX_DEBUG(this->logger, "Got data with key " << std::quoted(data.first) << " from module " << moduleName << " in run " << runData->id);
                 runData->insertData(data);
             }
         }));
@@ -196,8 +196,14 @@ boost::future<void> System::run() {
     log4cxx::LoggerPtr logger = this->logger;
 
     return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto future) {
+        LOG4CXX_DEBUG(logger, "All modules have finished for run with ID " << runData->id);
+
         try {
-            future.wait();
+            boost::csbl::vector<boost::future<void>> allComplete = future.get();
+
+            for (boost::future<void>& moduleFuture : allComplete) {
+                moduleFuture.get();
+            }
         } catch (const std::exception& e) {
             LOG4CXX_ERROR(logger, "Run with ID " << runData->id << " has failed: " << e.what());
             throw;

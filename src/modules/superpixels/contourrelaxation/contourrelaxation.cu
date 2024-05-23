@@ -97,8 +97,6 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
     // in all traversion orders specified inside that class. We will just need to loop over the coordinates
     // we receive by this object.
 
-    CARTSLAM_START_AVERAGE_TIMING(iteration);
-
     std::vector<cv::Point2i> pixels;
     getPointsAsVector(labelImage.size(), pixels);
 
@@ -107,7 +105,6 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
         // Loop over all coordinates received by the traversion generator.
         // It is important to start with begin() here, which does not only set the correct image size,
         // but also resets all internal counters.
-        CARTSLAM_START_TIMING(iteration);
 
         // TODO: Parallelize this loop further
 #pragma omp parallel for
@@ -155,12 +152,7 @@ void ContourRelaxation::relax(const unsigned int numIterations, cv::OutputArray 
                 }
             }
         }
-
-        CARTSLAM_END_TIMING(iteration);
-        CARTSLAM_INCREMENT_AVERAGE_TIMING(iteration);
     }
-
-    CARTSLAM_END_AVERAGE_TIMING(iteration);
 
     // Return the resulting label image.
     if (out_labelImage.needed() && out_labelImage.isMat()) {

@@ -7,7 +7,7 @@
 #include "utils/modules.hpp"
 
 #define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)
-#define CARTSLAM_PLANE_TEMPORAL_DISTANCE (CARTSLAM_RUN_RETENTION - CARTSLAM_CONCURRENT_RUN_LIMIT)
+#define CARTSLAM_PLANE_TEMPORAL_DISTANCE (min((CARTSLAM_RUN_RETENTION - CARTSLAM_CONCURRENT_RUN_LIMIT) / 2, 3))
 
 #define THREADS_PER_BLOCK_X 32
 #define THREADS_PER_BLOCK_Y 32
@@ -15,17 +15,27 @@
 #define Y_BATCH 4
 #define SHARED_SIZE ((X_BATCH * THREADS_PER_BLOCK_X) * (Y_BATCH * (LOW_PASS_FILTER_PADDING * 2 + THREADS_PER_BLOCK_Y)))
 
+#define LABEL_INDEX(label, plane) ((label) * 3 + (plane))
+
 __global__ void performSuperPixelClassifications(cv::cuda::PtrStepSz<cart::derivative_t> derivatives,
                                                  cv::cuda::PtrStepSz<cart::contour::label_t> labels,
                                                  cv::cuda::PtrStepSz<uint8_t> planes,
                                                  cart::PlaneParameters params,
                                                  cv::cuda::PtrStepSz<int> globalLabelData,
-                                                 cv::cuda::PtrStepSz<uint8_t> resultingPlanes,
                                                  cart::cv_mat_ptr_t<uint8_t>* previousPlanes,
                                                  cart::cv_mat_ptr_t<cart::optical_flow_t>* previousOpticalFlow,
                                                  int previousPlanesCount,
                                                  int maxLabel) {
     extern __shared__ int sharedLabelData[];  // For each label; Track vertical, horizontal and unknown votes. Total these for total pixels
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < maxLabel; i += blockDim.x * blockDim.y) {
+#pragma unroll
+        for (int plane = 0; plane < 3; plane++) {
+            sharedLabelData[LABEL_INDEX(i, plane)] = 0;
+        }
+    }
+
+    __syncthreads();
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -59,59 +69,82 @@ __global__ void performSuperPixelClassifications(cv::cuda::PtrStepSz<cart::deriv
 
             planes[INDEX(pixelX + j, pixelY + i, planesRowStep)] = plane;
 
-            if (previousPlanesCount <= 0) {
-                continue;
-            }
+            // Will not diverge since this will be the same across all threads
+            if (previousPlanesCount > 0) {
+                int votes[CARTSLAM_PLANE_COUNT] = {0};
+                votes[plane] += 2;  // Assign more weight to current value
 
-            int votes[CARTSLAM_PLANE_COUNT] = {0};
-            votes[plane]++;
+                // Need to be signed ints because we can go negative
+                int x = pixelX + j;
+                int y = pixelY + i;
 
-            // Need to be signed ints because we can go negative
-            int x = pixelX + j;
-            int y = pixelY + i;
+                for (int k = 0; k < previousPlanesCount; k++) {
+                    cart::cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
+                    cart::optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(cart::optical_flow_t))];
+                    cart::optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(cart::optical_flow_t))];
 
-            for (int k = 0; k < previousPlanesCount; k++) {
-                cart::cv_mat_ptr_t previosOptFlow = previousOpticalFlow[k];
-                cart::optical_flow_t flowX = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 0, previosOptFlow.step / sizeof(cart::optical_flow_t))];
-                cart::optical_flow_t flowY = previosOptFlow.data[INDEX_CH(pixelX + j, pixelY + i, 2, 1, previosOptFlow.step / sizeof(cart::optical_flow_t))];
+                    // Flow values are in S10.5 format. We are only interested in whole integer values
+                    flowX >>= 5;
+                    flowY >>= 5;
 
-                // Flow values are in S10.5 format. We are only interested in whole integer values
-                flowX >>= 5;
-                flowY >>= 5;
+                    // We subtract the flow values to get the previous pixel position. For each opt flow matrix, these reference the previous frame,
+                    // so we need to subtract all the flow values between current and the target frame to get the right position
+                    x -= flowX;
+                    y -= flowY;
 
-                // We subtract the flow values to get the previous pixel position. For each opt flow matrix, these reference the previous frame,
-                // so we need to subtract all the flow values between current and the target frame to get the right position
-                x -= flowX;
-                y -= flowY;
+                    // It is possible for these values to go beyond the image bounds, so we need to check
+                    if (x < 0 || y < 0 || x >= derivatives.cols || y >= derivatives.rows) {
+                        continue;
+                    }
 
-                // It is possible for these values to go beyond the image bounds, so we need to check
-                if (x < 0 || y < 0 || x >= derivatives.cols || y >= derivatives.rows) {
-                    continue;
+                    cart::cv_mat_ptr_t previousPlane = previousPlanes[k];
+                    int previousPlaneValue = previousPlane.data[INDEX(x, y, previousPlane.step / sizeof(uint8_t))];
+                    votes[previousPlaneValue]++;
                 }
 
-                cart::cv_mat_ptr_t previousPlane = previousPlanes[k];
-                int previousPlaneValue = previousPlane.data[INDEX(x, y, previousPlane.step / sizeof(uint8_t))];
-                votes[previousPlaneValue]++;
-            }
-
-            // Find the plane with the most votes, or unknown if there are no votes
-            int max = votes[cart::Plane::HORIZONTAL] > votes[cart::Plane::VERTICAL] ? cart::Plane::HORIZONTAL : cart::Plane::VERTICAL;
-            if (votes[max] == 0) {
-                max = cart::Plane::UNKNOWN;
+                // Find the plane with the most votes, or unknown if there are no votes
+                plane = votes[cart::Plane::HORIZONTAL] > votes[cart::Plane::VERTICAL] ? cart::Plane::HORIZONTAL : cart::Plane::VERTICAL;
+                if (votes[plane] == 0) {
+                    plane = cart::Plane::UNKNOWN;
+                }
             }
 
             cart::contour::label_t label = labels[INDEX(pixelX + j, pixelY + i, labels.step / sizeof(cart::contour::label_t))];
-            atomicAdd(&sharedLabelData[3 * label + max], 1);
+            atomicAdd(&sharedLabelData[LABEL_INDEX(label, plane)], 1);
         }
     }
 
     __syncthreads();
 
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        for (int i = 0; i < maxLabel; i++) {
-            atomicAdd(&globalLabelData[INDEX(i, 0, globalLabelData.step / sizeof(int))], sharedLabelData[3 * i]);
-            atomicAdd(&globalLabelData[INDEX(i, 1, globalLabelData.step / sizeof(int))], sharedLabelData[3 * i + 1]);
-            atomicAdd(&globalLabelData[INDEX(i, 2, globalLabelData.step / sizeof(int))], sharedLabelData[3 * i + 2]);
+    size_t globalStep = globalLabelData.step / sizeof(int);
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < maxLabel; i += blockDim.x * blockDim.y) {
+#pragma unroll
+        for (int plane = 0; plane < 3; plane++) {
+            atomicAdd(&globalLabelData[INDEX(plane, i, globalStep)], sharedLabelData[LABEL_INDEX(i, plane)]);
+        }
+    }
+}
+
+__global__ void classifyPlanes(cv::cuda::PtrStepSz<cart::contour::label_t> labels,
+                               cv::cuda::PtrStepSz<int> globalLabelData,
+                               cv::cuda::PtrStepSz<uint8_t> resultingPlanes,
+                               int maxLabel) {
+    extern __shared__ int sharedLabelData[];  // For each label; Track vertical, horizontal and unknown votes. Total these for total pixels
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int pixelX = x * X_BATCH;
+    int pixelY = y * Y_BATCH;
+
+    size_t planesRowStep = resultingPlanes.step / sizeof(uint8_t);
+    size_t globalStep = globalLabelData.step / sizeof(int);
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < maxLabel; i += blockDim.x * blockDim.y) {
+#pragma unroll
+        for (int plane = 0; plane < 3; plane++) {
+            sharedLabelData[LABEL_INDEX(i, plane)] = globalLabelData[INDEX(plane, i, globalStep)];
         }
     }
 
@@ -119,17 +152,24 @@ __global__ void performSuperPixelClassifications(cv::cuda::PtrStepSz<cart::deriv
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
-            if (pixelX + j >= derivatives.cols || pixelY + i >= derivatives.rows) {
+            if (pixelX + j >= labels.cols || pixelY + i >= labels.rows) {
                 continue;
             }
 
             cart::contour::label_t label = labels[INDEX(pixelX + j, pixelY + i, labels.step / sizeof(cart::contour::label_t))];
-            int verticalVotes = globalLabelData[INDEX(label, 0, globalLabelData.step / sizeof(int))];
-            int horizontalVotes = globalLabelData[INDEX(label, 1, globalLabelData.step / sizeof(int))];
-            int unknownVotes = globalLabelData[INDEX(label, 2, globalLabelData.step / sizeof(int))];
+            int maxVotes = 2 * sharedLabelData[LABEL_INDEX(label, cart::Plane::HORIZONTAL)];  // Assign a higher weight to horizontal votes
+            int max = cart::Plane::HORIZONTAL;
 
-            int max = verticalVotes > horizontalVotes ? cart::Plane::VERTICAL : cart::Plane::HORIZONTAL;
-            if (verticalVotes == 0 && horizontalVotes == 0) {
+            int verticalVotes = sharedLabelData[LABEL_INDEX(label, cart::Plane::VERTICAL)];
+            int unknownVotes = sharedLabelData[LABEL_INDEX(label, cart::Plane::UNKNOWN)];
+
+            if (verticalVotes > maxVotes) {
+                maxVotes = verticalVotes;
+                max = cart::Plane::VERTICAL;
+            }
+
+            if (unknownVotes > maxVotes) {
+                maxVotes = unknownVotes;
                 max = cart::Plane::UNKNOWN;
             }
 
@@ -192,7 +232,16 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
             LOG4CXX_DEBUG(this->logger, "Getting previous planes from " << relativeRun->id << " (id: " << data.id << ", i: " << i << ")");
 
             // Block until available
-            auto prev = relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
+            boost::shared_ptr<cv::cuda::GpuMat> prev;
+            try {
+                prev = relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
+            } catch (const std::exception& e) {
+                LOG4CXX_ERROR(this->logger, "Could not get previous planes from " << relativeRun->id << ": " << e.what());
+                break;
+            }
+
+            LOG4CXX_DEBUG(this->logger, "Got previous planes from " << relativeRun->id << " (id: " << data.id << ", i: " << i << ")");
+
             previousPlanesHost[previousPlaneCount] = {
                 static_cast<uint8_t*>(prev->cudaPtr()),
                 prev->step,
@@ -202,7 +251,16 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
             if (relativeRun->id > 1 && previousPlaneCount < CARTSLAM_PLANE_TEMPORAL_DISTANCE) {
                 LOG4CXX_DEBUG(this->logger, "Getting optical flow from " << relativeRun->id);
-                auto optFlow = relativeRun->getDataAsync<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW).get();
+
+                boost::shared_ptr<image_optical_flow_t> optFlow;
+
+                try {
+                    optFlow = relativeRun->getDataAsync<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW).get();
+                } catch (const std::exception& e) {
+                    LOG4CXX_ERROR(this->logger, "Could not get optical flow from " << relativeRun->id << ": " << e.what());
+                    break;
+                }
+
                 previousOpticalFlowHost[previousPlaneCount] = {
                     static_cast<optical_flow_t*>(optFlow->flow.cudaPtr()),
                     optFlow->flow.step};
@@ -223,7 +281,7 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
     cv::cuda::Stream cvStream = cv::cuda::StreamAccessor::wrapStream(stream);
 
-    cv::cuda::GpuMat globalLabelData(3, maxLabel + 1, CV_32SC1);
+    cv::cuda::GpuMat globalLabelData(maxLabel + 1, 3, CV_32SC1);
     globalLabelData.setTo(0, cvStream);
     PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
 
@@ -232,19 +290,8 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
     size_t sharedSize = (maxLabel + 1) * 3 * sizeof(int);
 
-    /*
-    cv::cuda::PtrStepSz<cart::derivative_t> derivatives,
-                                                 cv::cuda::PtrStepSz<cart::contour::label_t> labels,
-                                                 cv::cuda::PtrStepSz<uint8_t> planes,
-                                                 cart::PlaneParameters params,
-                                                 cv::cuda::PtrStepSz<int> globalLabelData,
-                                                 cv::cuda::PtrStepSz<uint8_t> resultingPlanes,
-                                                 cart::cv_mat_ptr_t<uint8_t>* previousPlanes,
-                                                 cart::cv_mat_ptr_t<cart::optical_flow_t>* previousOpticalFlow,
-                                                 int previousPlanesCount,
-                                                 int maxLabel*/
-
-    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*derivatives, labelsGpu, planes, params, globalLabelData, smoothed, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
+    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*derivatives, labelsGpu, planes, params, globalLabelData, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
+    classifyPlanes<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(labelsGpu, globalLabelData, smoothed, maxLabel);
 
     if (data.id > 1 && this->useTemporalSmoothing) {
         CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevPlanes, stream));
@@ -255,33 +302,40 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
     CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
     CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 
-    if (this->useTemporalSmoothing) {
-        if (data.id == 1) {
-            // Return both as the same, since this is the first run
-            LOG4CXX_DEBUG(this->logger, "Returning planes as both smoothed and unsmoothed");
-            auto ptr = boost::make_shared<cv::cuda::GpuMat>(boost::move(planes));
-            return MODULE_RETURN_ALL(
-                std::make_pair(CARTSLAM_KEY_PLANES, ptr),
-                std::make_pair(CARTSLAM_KEY_PLANES_UNSMOOTHED, ptr));
-        }
-
-        return MODULE_RETURN_ALL(
-            MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES, cv::cuda::GpuMat, boost::move(smoothed)),
-            MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES_UNSMOOTHED, cv::cuda::GpuMat, boost::move(planes)));
-    }
-
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_PLANES, cv::cuda::GpuMat, boost::move(planes));
+    return MODULE_RETURN_ALL(
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES, cv::cuda::GpuMat, boost::move(smoothed)),
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_PLANES_UNSMOOTHED, cv::cuda::GpuMat, boost::move(planes)));
 }
 
 void SuperPixelDisparityPlaneSegmentationModule::updatePlaneParameters(System& system, SystemRunData& data) {
-    // TODO: Inspiration for alternative: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7926705&tag=1
+    cv::Mat channels[2];
+
+    cv::Mat histogram;
+    data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM)->download(histogram);
+
+    cv::split(histogram, channels);
+    histogram = channels[0];
+
+    {
+        boost::unique_lock<boost::shared_mutex> lock(this->derivativeHistogramMutex);
+
+        if (this->derivativeHistogram.empty()) {
+            this->derivativeHistogram = cv::Mat::zeros(histogram.size(), histogram.type());
+        } else {
+            // Add the values from histogram to the running total
+            this->derivativeHistogram += histogram;
+            histogram = this->derivativeHistogram.clone();
+        }
+
+        if (data.id % (this->updateInterval * this->resetInterval) == 1) {
+            // Reset to avoid overflow
+            this->derivativeHistogram.setTo(0);
+        }
+    }
+
     if (data.id % this->updateInterval != 1) {
         return;
     }
-
-    // TODO: Sum up the histograms from all the recent runs
-    cv::Mat histogram;
-    data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM)->download(histogram);
 
     this->planeParameterProvider->updatePlaneParameters(this->logger, system, data, histogram);
 

@@ -1,5 +1,7 @@
 #include "utils/data.hpp"
 
+#include <boost/throw_exception.hpp>
+
 namespace cart {
 
 const std::vector<std::string> DataContainer::getDataKeys() {
@@ -25,17 +27,20 @@ bool DataContainer::hasData(const std::string key) {
 
 boost::future<void> DataContainer::waitForData(const std::vector<std::string> keys) {
     boost::packaged_task<void> task([this, keys] {
-        boost::unique_lock<boost::mutex> lock(this->dataMutex);
         for (const auto& key : keys) {
             LOG4CXX_DEBUG(this->getLogger(), "Waiting for key " << key << " to be available");
 
-            while (!this->data.count(key)) {
-                // If we ever have to wait more than 3 seconds for new data to be inserted, the run
-                // is most likely over and something has failed somewhere
-                const boost::system_time timeout = boost::get_system_time() + boost::posix_time::seconds(CARTSLAM_WAIT_FOR_DATA_TIMEOUT);
+            {
+                boost::unique_lock<boost::mutex> lock(this->dataMutex);
+                while (!this->data.count(key)) {
+                    // If we ever have to wait more than 3 seconds for new data to be inserted, the run
+                    // is most likely over and something has failed somewhere
+                    const boost::system_time timeout = boost::get_system_time() + boost::posix_time::seconds(CARTSLAM_WAIT_FOR_DATA_TIMEOUT);
 
-                if (!this->dataCondition.timed_wait(lock, timeout)) {
-                    throw std::runtime_error("Timeout waiting for data key \"" + key + "\"");
+                    if (!this->dataCondition.timed_wait(lock, timeout)) {
+                        LOG4CXX_DEBUG(this->getLogger(), "Timed out while waiting for " << std::quoted(key));
+                        BOOST_THROW_EXCEPTION(DataNotAvailableException(key));
+                    }
                 }
             }
         }

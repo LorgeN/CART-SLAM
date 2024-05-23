@@ -23,7 +23,7 @@ namespace cart {
  * @tparam T Type of the data in the cv::cuda::GpuMat
  */
 template <typename T>
-struct cv_mat_ptr_t {
+struct __align__(16) cv_mat_ptr_t {
     T *data;
     size_t step;
 };
@@ -84,7 +84,7 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadd
         }
 
         if (threadIdx.y == blockDim.y - 1) {
-            int maxSharedY = YBatch * blockDim.y + yPadding;
+            int maxSharedY = YBatch * blockDim.y;
 
             // Copy extra rows on bottom
             for (int i = 0; i < yPadding; i++) {
@@ -141,7 +141,7 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadd
         }
 
         if (threadIdx.x == blockDim.x - 1) {
-            int maxSharedX = XBatch * blockDim.x + xPadding;
+            int maxSharedX = XBatch * blockDim.x;
 
             // Copy extra columns on right
             for (int i = 0; i < YBatch; i++) {

@@ -57,16 +57,16 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
 
             cart::derivative_t verticalDerivative =
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
-                sharedDisparity[LOCAL_INDEX(j, i)];
+                sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
             cart::derivative_t horizontalDerivative =
                 sharedDisparity[LOCAL_INDEX(j + 1, i)] -
-                sharedDisparity[LOCAL_INDEX(j, i)];
+                sharedDisparity[LOCAL_INDEX(j - 1, i)];
 
-            bool verticalDerivativeValid = sharedDisparity[LOCAL_INDEX(j, i)] != CARTSLAM_DISPARITY_INVALID &&
+            bool verticalDerivativeValid = sharedDisparity[LOCAL_INDEX(j, i - 1)] != CARTSLAM_DISPARITY_INVALID &&
                                            sharedDisparity[LOCAL_INDEX(j, i + 1)] != CARTSLAM_DISPARITY_INVALID;
 
-            bool horizontalDerivativeValid = sharedDisparity[LOCAL_INDEX(j, i)] != CARTSLAM_DISPARITY_INVALID &&
+            bool horizontalDerivativeValid = sharedDisparity[LOCAL_INDEX(j - 1, i)] != CARTSLAM_DISPARITY_INVALID &&
                                              sharedDisparity[LOCAL_INDEX(j + 1, i)] != CARTSLAM_DISPARITY_INVALID;
 
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 0, outputRowStep)] = verticalDerivativeValid ? verticalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
@@ -87,27 +87,29 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
     size_t index = blockIdx.x + blockIdx.y * gridDim.x;
     size_t histStep = histogramOutput.step / sizeof(int);
 
-    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < 512; i += blockDim.x * blockDim.y) {
-        histogramOutput[INDEX(index, i, histStep)] = localHistogram[i];
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < 256; i += blockDim.x * blockDim.y) {
+        histogramOutput[INDEX_CH(index, i, 2, 0, histStep)] = localHistogram[2 * i];
+        histogramOutput[INDEX_CH(index, i, 2, 1, histStep)] = localHistogram[2 * i + 1];
     }
 }
 
 __global__ void mergeDerivativeHistograms(cv::cuda::PtrStepSz<int> histogram, cv::cuda::PtrStepSz<int> output, int threadCount) {
-    // Each thread handles one value, for a total of 256 threads
     int channel = blockIdx.x * blockDim.x + threadIdx.x;
 
-    unsigned int verticalSum = 0;
-    unsigned int horizontalSum = 0;
+    int verticalSum = 0;
+    int horizontalSum = 0;
 
     size_t histStep = histogram.step / sizeof(int);
 
     for (int i = 0; i < threadCount; i++) {
-        verticalSum += histogram[INDEX(i * 2, channel, histStep)];
-        horizontalSum += histogram[INDEX(i * 2 + 1, channel, histStep)];
+        verticalSum += histogram[INDEX_CH(i, channel, 2, 0, histStep)];
+        horizontalSum += histogram[INDEX_CH(i, channel, 2, 1, histStep)];
     }
 
-    output[2 * channel] = verticalSum;
-    output[2 * channel + 1] = horizontalSum;
+    size_t outputStep = output.step / sizeof(int);
+
+    output[INDEX_CH(channel, 0, 2, 0, outputStep)] = verticalSum;
+    output[INDEX_CH(channel, 0, 2, 1, outputStep)] = horizontalSum;
 }
 
 __global__ void applyFalseColors(cv::cuda::PtrStepSz<cart::derivative_t> derivatives, cv::cuda::PtrStepSz<uint8_t> output, double maxrad) {
@@ -157,8 +159,8 @@ system_data_t ImageDisparityDerivativeModule::runInternal(System& system, System
                    (disparity->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
 
     size_t totalBlocks = numBlocks.x * numBlocks.y;
-    cv::cuda::GpuMat histogramTempStorage(512, totalBlocks, CV_32SC1);
-    cv::cuda::GpuMat histogramOutput(256, 2, CV_32SC1);
+    cv::cuda::GpuMat histogramTempStorage(256, totalBlocks, CV_32SC2);
+    cv::cuda::GpuMat histogramOutput(1, 256, CV_32SC2);
 
     cudaStream_t stream;
     CUDA_SAFE_CALL(this->logger, cudaStreamCreate(&stream));

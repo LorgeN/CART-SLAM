@@ -8,11 +8,23 @@
 #include <boost/thread/future.hpp>
 #include <vector>
 
-#define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 20
+#define CARTSLAM_WAIT_FOR_DATA_TIMEOUT 5
 
 namespace cart {
 typedef std::pair<std::string, boost::shared_ptr<void>> system_data_pair_t;
 typedef std::vector<system_data_pair_t> system_data_t;
+
+class DataNotAvailableException : public std::exception {
+   public:
+    DataNotAvailableException(const std::string key) : key(key) {}
+
+    const char* what() const throw() {
+        return this->key.c_str();
+    }
+
+   private:
+    const std::string key;
+};
 
 class DataContainer {
    public:
@@ -43,12 +55,12 @@ class DataContainer {
         return this->waitForData({key}).then([this, key](boost::future<void> future) {
             try {
                 future.get();
-            } catch (const boost::exception& e) {
-                LOG4CXX_ERROR(this->getLogger(), "Error while waiting for data: " << boost::diagnostic_information(e));
+            } catch (const std::exception& e) {
+                LOG4CXX_DEBUG(this->getLogger(), "An error occurred while fetching " << std::quoted(key) << ": " << e.what());
                 throw;
             }
 
-            LOG4CXX_DEBUG(this->getLogger(), "Data key " << key << " is now available");
+            LOG4CXX_DEBUG(this->getLogger(), "Data key " << std::quoted(key) << " is now available");
             return this->getData<T>(key);
         });
     }
