@@ -1,8 +1,56 @@
-#include "modules/superpixels/contourrelaxation/features/compactness.hpp"
+// Copyright 2013 Visual Sensorics and Information Processing Lab, Goethe University, Frankfurt
+//
+// This file is part of Contour-relaxed Superpixels.
+//
+// Contour-relaxed Superpixels is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Contour-relaxed Superpixels is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with Contour-relaxed Superpixels.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "modules/superpixels/contourrelaxation/constants.hpp"
+#pragma once
+
+#include "feature.cuh"
+#include "gaussian.cuh"
 
 namespace cart::contour {
+/**
+ * @class CompactnessFeature
+ * @brief Feature class for computing a cost based on the spatial distribution of a label, to enforce compactness.
+ */
+class CompactnessFeature : public CUDAFeature {
+   private:
+    LabelStatisticsGauss* labelStatisticsPosX;
+    LabelStatisticsGauss* labelStatisticsPosY;
+    label_t maxLabelId;
+
+    /**
+     * @brief Update label statistics to reflect a label change of the given pixel.
+     * @param curPixelCoords coordinates of the pixel changing its label
+     * @param oldLabel old label of the regarded pixel
+     * @param newLabel new label of the regarded pixel
+     */
+    __device__ void updateStatistics(cv::Point2i const& curPixelCoords,
+                          LabelStatisticsGauss& labelStatsOldLabelPosX, LabelStatisticsGauss& labelStatsNewLabelPosX,
+                          LabelStatisticsGauss& labelStatsOldLabelPosY, LabelStatisticsGauss& labelStatsNewLabelPosY) const;
+
+   public:
+    __device__ void initializeStatistics(const cv::cuda::PtrStepSz<label_t> labelImage, size_t xBatch, size_t yBatch) override;
+
+    __device__ double calculateCost(const cv::Point2i curPixelCoords,
+                                    const label_t oldLabel, const label_t pretendLabel,
+                                    const label_t* neighbourLabels, const size_t neighbourLabelSize) const override;
+
+    __device__ void updateStatistics(const cv::Point2i const& curPixelCoords, label_t const& oldLabel, label_t const& newLabel) override;
+};
+
 
 inline void updateCompactnessCost(LabelStatisticsGauss& labelStats) {
     labelStats.featureCost = labelStats.squareValueSum - (SQUARED(labelStats.valueSum) / static_cast<double>(labelStats.pixelCount));

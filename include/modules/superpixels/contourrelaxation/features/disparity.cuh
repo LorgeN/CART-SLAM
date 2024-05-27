@@ -1,11 +1,8 @@
 #pragma once
 
-#include <opencv2/opencv.hpp>
-#include <vector>
-
 #include "../constants.hpp"
-#include "gaussian.hpp"
-#include "ifeature.hpp"
+#include "gaussian.cuh"
+#include "feature.cuh"
 
 namespace cart::contour {
 
