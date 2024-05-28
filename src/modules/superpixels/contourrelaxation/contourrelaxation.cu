@@ -218,6 +218,7 @@ __global__ void findBorderPixels(cv::cuda::PtrStepSz<cart::contour::label_t> lab
 __global__ void performRelaxation(
     cart::contour::CRSettings settings,
     cart::contour::CRPoint* borderPixels,
+    cart::contour::label_t* newLabels,
     unsigned int* borderCount) {
     // TODO: Move neighbouring labels to shared memory
     size_t baseIndex = (blockIdx.x * blockDim.x + threadIdx.x) * POINT_BATCH;
@@ -250,15 +251,32 @@ __global__ void performRelaxation(
             }
         }
 
-        // If we have found a better label for the pixel, update the statistics for all features
-        // and change the label of the pixel.
-        if (bestLabel != currLabel) {
-            for (size_t i = 0; i < settings.numFeatures; i++) {
-                (*settings.features[i].feature)->updateStatistics(curPixelCoords, currLabel, bestLabel);
-            }
+        newLabels[index] = bestLabel;
+    }
+}
 
-            settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, settings.labelImage.step / sizeof(cart::contour::label_t))] = bestLabel;
+__global__ void updateLabels(cart::contour::CRSettings settings, cart::contour::CRPoint* borderPixels, cart::contour::label_t* newLabels, unsigned int* borderCount) {
+    size_t baseIndex = (blockIdx.x * blockDim.x + threadIdx.x) * POINT_BATCH;
+
+    for (size_t i = 0; i < POINT_BATCH; i++) {
+        size_t index = baseIndex + i;
+        if (index >= *borderCount) {
+            return;
         }
+
+        cart::contour::CRPoint curPixelCoords = borderPixels[index];
+        cart::contour::label_t currLabel = settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, settings.labelImage.step / sizeof(cart::contour::label_t))];
+        cart::contour::label_t newLabel = newLabels[index];
+
+        if (currLabel == newLabel) {
+            continue;
+        }
+
+        for (size_t i = 0; i < settings.numFeatures; i++) {
+            (*settings.features[i].feature)->updateStatistics(curPixelCoords, currLabel, newLabel);
+        }
+
+        settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, settings.labelImage.step / sizeof(cart::contour::label_t))] = newLabel;
     }
 }
 
@@ -354,6 +372,9 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
     unsigned int hostBorderCount;
 
+    label_t* newLabels;
+    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
+
     for (size_t i = 0; i < numIterations; i++) {
         LOG4CXX_DEBUG(this->logger, "Iteration " << i);
         // Reset the border count
@@ -372,7 +393,8 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
         // Perform the relaxation
         size_t gridSize = ceil(hostBorderCount / (128.0 * POINT_BATCH));
-        performRelaxation<<<gridSize, 128, 0, stream>>>(settings, borderPixels, borderCount);
+        performRelaxation<<<gridSize, 128, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
+        updateLabels<<<gridSize, 128, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
     }
 
     // Return the resulting label image.
