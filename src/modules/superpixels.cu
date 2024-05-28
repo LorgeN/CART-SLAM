@@ -1,9 +1,10 @@
-#include "modules/superpixels.hpp"
-
 #include <opencv2/cudaimgproc.hpp>
 
 #include "modules/disparity.hpp"
-#include "modules/superpixels/contourrelaxation/initialization.hpp"
+#include "modules/superpixels.hpp"
+#include "modules/superpixels/contourrelaxation/features/color.cuh"
+#include "modules/superpixels/contourrelaxation/features/compactness.cuh"
+#include "modules/superpixels/contourrelaxation/features/disparity.cuh"
 #include "modules/superpixels/visualization.cuh"
 #include "utils/modules.hpp"
 
@@ -28,8 +29,10 @@ SuperPixelModule::SuperPixelModule(
         throw std::invalid_argument("compactnessWeight must be non-negative");
     }
 
-    cv::Mat initialLabelImage = contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight);
-    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, directCliqueCost, directCliqueCost / sqrt(2));
+    cv::cuda::GpuMat initialLabelImage;
+    contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, this->maxLabelId);
+
+    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, directCliqueCost / sqrt(2));
     this->contourRelaxation->addFeature<contour::CompactnessFeature>(compactnessWeight);
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
@@ -44,8 +47,6 @@ SuperPixelModule::SuperPixelModule(
 system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data) {
     cv::cuda::GpuMat image;
     cv::cuda::Stream stream;
-    cv::Mat imageCpu;
-    cv::Mat disparityCpu;
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     // Generate a 3-channel version of the grayscale image, which we will need later on
@@ -57,42 +58,35 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_BGR2YCrCb, 0, stream);
 #endif
 
-    image.download(imageCpu, stream);
-
-    auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
-    disparityDerivative->download(disparityCpu, stream);
-
     stream.waitForCompletion();
 
-    const unsigned int numIterations = data.id == 1 ? this->initialIterations : 1;
+    auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
 
-    cv::Mat relaxedLabelImage;
+    const unsigned int numIterations = data.id == 1 ? this->initialIterations : 8;
+
+    cv::cuda::GpuMat relaxedLabelImage;
 
     {
         // Lock the mutex to protect the contour relaxation object, which is not thread safe
         boost::lock_guard<boost::mutex> lock(this->mutex);
-        this->contourRelaxation->setData(contour::DataType::Image, imageCpu);
-        this->contourRelaxation->setData(contour::DataType::Disparity, disparityCpu);
-        this->contourRelaxation->relax(numIterations, relaxedLabelImage);
+        this->contourRelaxation->relax(numIterations, image, *disparityDerivative, relaxedLabelImage);
     }
 
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, cv::Mat, relaxedLabelImage);
+    return MODULE_RETURN_ALL(
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_SUPERPIXELS, cv::cuda::GpuMat, boost::move(relaxedLabelImage)),
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, contour::label_t, this->maxLabelId));
 }
 
 boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, SystemRunData &data) {
     auto promise = boost::make_shared<boost::promise<system_data_t>>();
 
     boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto labelImage = data.getData<cv::Mat>(CARTSLAM_KEY_SUPERPIXELS);
-
-        cv::cuda::GpuMat labels;
-        labels.upload(*labelImage);
+        auto labels = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_SUPERPIXELS);
 
         cv::cuda::GpuMat image = getReferenceImage(data.dataElement);
-
         cv::cuda::GpuMat boundaryOverlay;
 
-        cart::contour::computeBoundaryOverlay(image, labels, boundaryOverlay);
+        cart::contour::computeBoundaryOverlay(this->logger, image, *labels, boundaryOverlay);
 
         cv::Mat boundaryOverlayCpu;
         boundaryOverlay.download(boundaryOverlayCpu);

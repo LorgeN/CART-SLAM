@@ -31,20 +31,6 @@
 
 namespace cart::contour {
 
-/**
- * @brief Create a label image initialization of rectangular blocks of the given size.
- * @param imageSize the size of the label image which will be created
- * @param blockWidth the width of one rectangular block
- * @param blockHeight the height of one rectangular block
- * @return a label image of the given size, constructed by blocks of the given size, with each block being a single, unique label
- */
-cv::Mat createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight);
+void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight, cv::cuda::GpuMat& labelImage, cart::contour::label_t& maxLabelId, cv::cuda::Stream& stream = cv::cuda::Stream::Null());
 
-/**
- * @brief Create a label image initialization of diamonds / rotated rectangular blocks of the given size.
- * @param imageSize the size of the label image which will be created
- * @param sideLength the width and height of one rectangular block which will be rotated by 45 degrees to form a diamond
- * @return a label image of the given size, constructed by diamonds of the given size, with each diamond being a single, unique label
- */
-cv::Mat createDiamondInitialization(cv::Size const& imageSize, int const& sideLength);
 }  // namespace cart::contour

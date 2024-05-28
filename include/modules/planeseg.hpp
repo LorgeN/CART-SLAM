@@ -145,8 +145,8 @@ class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModul
         const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false)
         // Need optical flow for temporal smoothing
         : SyncWrapperSystemModule("SPPlaneSegmentation",
-                                  useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, CARTSLAM_KEY_OPTFLOW}
-                                                       : std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM}),
+                                  useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, CARTSLAM_KEY_OPTFLOW}
+                                                       : std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM}),
           planeParameterProvider(planeParameterProvider),
           updateInterval(updateInterval),
           useTemporalSmoothing(useTemporalSmoothing),

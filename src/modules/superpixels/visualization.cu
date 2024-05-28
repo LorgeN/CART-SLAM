@@ -43,7 +43,7 @@ __global__ void overlayBoundaryVisualization(cv::cuda::PtrStepSz<uint8_t> bgrIma
 
 namespace cart::contour {
 
-void computeBoundaryOverlay(cv::cuda::GpuMat bgrImage, cv::cuda::GpuMat labelImage, cv::cuda::GpuMat &out_boundaryOverlay) {
+void computeBoundaryOverlay(log4cxx::LoggerPtr logger, cv::cuda::GpuMat bgrImage, cv::cuda::GpuMat labelImage, cv::cuda::GpuMat &out_boundaryOverlay) {
     assert(bgrImage.type() == CV_8UC3);
     assert(labelImage.type() == cv::DataType<label_t>::type);
 
