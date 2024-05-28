@@ -274,10 +274,8 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
         CUDA_SAFE_CALL(this->logger, cudaMemcpyAsync(devicePrevOpticalFlow, previousOpticalFlowHost, previousPlaneCount * sizeof(cv_mat_ptr_t<optical_flow_t>), cudaMemcpyHostToDevice, stream));
     }
 
-    auto labels = data.getData<cv::Mat>(CARTSLAM_KEY_SUPERPIXELS);
-    double maxLabelDbl;
-    cv::minMaxLoc(*labels, nullptr, &maxLabelDbl, nullptr, nullptr);
-    cart::contour::label_t maxLabel = static_cast<cart::contour::label_t>(maxLabelDbl);
+    auto labels = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_SUPERPIXELS);
+    auto maxLabel = *data.getData<contour::label_t>(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL);
 
     cv::cuda::Stream cvStream = cv::cuda::StreamAccessor::wrapStream(stream);
 
@@ -285,20 +283,17 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
     globalLabelData.setTo(0, cvStream);
     PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
 
-    cv::cuda::GpuMat labelsGpu;
-    labelsGpu.upload(*labels, cvStream);
-
     size_t sharedSize = (maxLabel + 1) * 3 * sizeof(int);
 
-    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*derivatives, labelsGpu, planes, params, globalLabelData, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
-    classifyPlanes<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(labelsGpu, globalLabelData, smoothed, maxLabel);
+    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*derivatives, *labels, planes, params, globalLabelData, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
+    classifyPlanes<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*labels, globalLabelData, smoothed, maxLabel);
 
     if (data.id > 1 && this->useTemporalSmoothing) {
         CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevPlanes, stream));
         CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevOpticalFlow, stream));
     }
 
-    CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
+    CUDA_SAFE_CALL(this->logger, cudaGetLastError());
     CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
     CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 

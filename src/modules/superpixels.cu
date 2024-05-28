@@ -30,10 +30,9 @@ SuperPixelModule::SuperPixelModule(
     }
 
     cv::cuda::GpuMat initialLabelImage;
-    cart::contour::label_t maxLabelId;
-    contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, maxLabelId);
+    contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, this->maxLabelId);
 
-    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, maxLabelId, directCliqueCost, directCliqueCost / sqrt(2));
+    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, directCliqueCost / sqrt(2));
     this->contourRelaxation->addFeature<contour::CompactnessFeature>(compactnessWeight);
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
@@ -73,7 +72,9 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
         this->contourRelaxation->relax(numIterations, image, *disparityDerivative, relaxedLabelImage);
     }
 
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_SUPERPIXELS, cv::cuda::GpuMat, relaxedLabelImage);
+    return MODULE_RETURN_ALL(
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_SUPERPIXELS, cv::cuda::GpuMat, boost::move(relaxedLabelImage)),
+        MODULE_MAKE_PAIR(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, contour::label_t, this->maxLabelId));
 }
 
 boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, SystemRunData &data) {

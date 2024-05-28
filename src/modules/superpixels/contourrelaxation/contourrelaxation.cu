@@ -376,7 +376,6 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
 
     for (size_t i = 0; i < numIterations; i++) {
-        LOG4CXX_DEBUG(this->logger, "Iteration " << i);
         // Reset the border count
         CUDA_SAFE_CALL(this->logger, cudaMemsetAsync(borderCount, 0, sizeof(unsigned int), stream));
 
@@ -389,7 +388,6 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
         // Synchronize stream and transfer the border count to the host
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
-        LOG4CXX_DEBUG(this->logger, "Iteration " << i << " found " << hostBorderCount << " border pixels");
 
         // Perform the relaxation
         size_t gridSize = ceil(hostBorderCount / (128.0 * POINT_BATCH));

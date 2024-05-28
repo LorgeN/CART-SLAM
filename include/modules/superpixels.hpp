@@ -8,6 +8,7 @@
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_SUPERPIXELS "superpixels"
+#define CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL "superpixels_max_label"
 
 // Default value for compactness feature weight depends on the type of image.
 // Since color images generate a total of 3 cost terms for the separate channels, we choose
@@ -31,6 +32,7 @@ class SuperPixelModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System &system, SystemRunData &data) override;
 
    private:
+    contour::label_t maxLabelId;
     boost::shared_ptr<contour::ContourRelaxation> contourRelaxation;
     const unsigned int initialIterations;
     boost::mutex mutex;  // Mutex to protect the contour relaxation object
