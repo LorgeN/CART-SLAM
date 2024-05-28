@@ -31,6 +31,6 @@
 
 namespace cart::contour {
 
-void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight, cv::cuda::GpuMat& labelImage, int& maxLabelId, cudaStream_t stream = 0);
+void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight, cv::cuda::GpuMat& labelImage, cart::contour::label_t& maxLabelId, cv::cuda::Stream& stream = cv::cuda::Stream::Null());
 
 }  // namespace cart::contour

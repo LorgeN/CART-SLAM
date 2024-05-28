@@ -16,7 +16,7 @@ set(Boost_USE_STATIC_RUNTIME OFF)
 
 find_package( Boost REQUIRED COMPONENTS system thread timer chrono ) 
 find_package( OpenCV REQUIRED )
-find_package( log4cxx 1.1 )
+find_package( log4cxx 1.2 )
 find_package( OpenMP )
 find_package( ZED 4 )
 
@@ -35,18 +35,21 @@ add_executable( cart_slam
     src/modules/planeseg/planeseg.cu
     src/modules/planeseg/planeseg_vis.cu
     src/modules/planeseg/sp_planeseg.cu
-    src/modules/superpixels.cpp
+    src/modules/superpixels.cu
     src/modules/superpixels/visualization.cu
-    src/modules/superpixels/contourrelaxation/traversion.cpp
+    src/modules/superpixels/contourrelaxation/features/compactness.cu
+    src/modules/superpixels/contourrelaxation/features/gaussian.cu
     src/modules/superpixels/contourrelaxation/contourrelaxation.cu
-    src/modules/superpixels/contourrelaxation/initialization.cpp
-    src/modules/superpixels/contourrelaxation/features/compactness.cpp
+    src/modules/superpixels/contourrelaxation/initialization.cu
     src/utils/ui.cpp
     src/utils/data.cpp
     src/utils/colors.cpp
     src/utils/peaks.cpp
     src/utils/cuda.cu
 )
+
+# Tells NVCC to generate device code for linking later
+set_target_properties( cart_slam PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )

@@ -1,4 +1,6 @@
-#include "modules/superpixels/contourrelaxation/initialization.cuh"
+#include <opencv2/core/cuda_stream_accessor.hpp>
+
+#include "modules/superpixels/contourrelaxation/initialization.hpp"
 #include "utils/cuda.cuh"
 
 #define THREAD_BLOCK_SIZE 32
@@ -21,6 +23,10 @@ __global__ void performBlockIntialization(cv::cuda::PtrStepSz<label_t> labelImag
     // Set the pixel values
     for (int i = 0; i < X_BATCH; i++) {
         for (int j = 0; j < Y_BATCH; j++) {
+            if (pixelX + i >= labelImage.cols || pixelY + j >= labelImage.rows) {
+                continue;
+            }
+
             int blockX = (pixelX + i) / blockWidth;
             int blockY = (pixelY + j) / blockHeight;
             int blockLabel = blockY * blocksPerRow + blockX;
@@ -30,7 +36,7 @@ __global__ void performBlockIntialization(cv::cuda::PtrStepSz<label_t> labelImag
     }
 }
 
-void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight, cv::cuda::GpuMat& labelImage, int& maxLabelId, cudaStream_t stream) {
+void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth, int const& blockHeight, cv::cuda::GpuMat& labelImage, cart::contour::label_t& maxLabelId, cv::cuda::Stream& cvStream) {
     assert(imageSize.width > 0 && imageSize.height > 0);
     assert(blockWidth > 0 && blockHeight > 0);
     assert(imageSize.width >= blockWidth && imageSize.height >= blockHeight);
@@ -48,6 +54,7 @@ void createBlockInitialization(cv::Size const& imageSize, int const& blockWidth,
     dim3 block(THREAD_BLOCK_SIZE, THREAD_BLOCK_SIZE);
     dim3 grid(ceil(static_cast<double>(imageSize.width) / (block.x * X_BATCH)), ceil(static_cast<double>(imageSize.height) / (block.y * Y_BATCH)));
 
+    cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
     performBlockIntialization<<<grid, block, 0, stream>>>(labelImage, blockWidth, blockHeight);
 }
 }  // namespace cart::contour

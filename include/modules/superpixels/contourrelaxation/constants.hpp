@@ -34,7 +34,5 @@ namespace cart::contour {
  */
 double const featuresMinVariance = 1.0 / 12.0;
 
-const log4cxx::LoggerPtr logger = cart::getLogger("ContourRelaxation");
-
 typedef uint16_t label_t;
 }  // namespace cart::contour

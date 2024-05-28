@@ -15,6 +15,15 @@
 #define CUDA_SAFE_CALL(logger, ans) \
     { cart::gpuAssert((logger), (ans), __FILE__, __LINE__); }
 
+// From https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
+__device__ double atomicAdd(double *address, double val);
+#endif
+
+__device__ inline double atomicSub(double *address, double val) {
+    return atomicAdd(address, -val);
+}
+
 namespace cart {
 
 /**

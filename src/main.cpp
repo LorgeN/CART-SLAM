@@ -27,9 +27,9 @@ int main(int argc, char* argv[]) {
     auto system = boost::make_shared<cart::System>(dataSource);
 
     system->addModule<cart::SuperPixelModule>();
-    //system->addModule<cart::SuperPixelVisualizationModule>();
+    system->addModule<cart::SuperPixelVisualizationModule>();
 
-    system->addModule<cart::ImageOpticalFlowModule>();
+    // system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
     system->addModule<cart::ZEDImageDisparityModule>();
@@ -39,11 +39,11 @@ int main(int argc, char* argv[]) {
     system->addModule<cart::ImageDisparityDerivativeModule>();
     // system->addModule<cart::ImageDisparityDerivativeVisualizationModule>();
 
-    auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(2, 12), std::make_pair(-3, 2));
+    // auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(2, 12), std::make_pair(-3, 2));
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     // system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
-    system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(true, true);
+    // system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
+    // system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(true, true);
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
@@ -63,19 +63,19 @@ int main(int argc, char* argv[]) {
         // Not technically accurate timing because runs are async, but good enough for our purposes for now
         CARTSLAM_START_TIMING(system);
 
-        last = system->run().then([logger](boost::future<void> future) {
+        system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
             }
-        });
+        }).wait();
 
         CARTSLAM_END_TIMING(system);
         CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
-    last.get();
+    //last.get();
 
     system->getThreadPool().join();
 

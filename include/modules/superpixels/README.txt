@@ -1,4 +1,6 @@
-This folder contains a modified version of the "Contour-Relaxed Superpixels" implementation provided by Rudolf Mester. 
+This folder contains a highly modified version of the "Contour-Relaxed Superpixels" implementation provided by Rudolf Mester. The
+modified version uses CUDA to speed up calculations, and is intended to be used as part of the CART-SLAM system.
+
 Please find below the original README of the project.
 
 ---
