@@ -12,6 +12,11 @@ namespace cart {
 typedef cv::cuda::GpuMat image_t;
 
 struct CameraIntrinsics {
+    /**
+     * @brief The Q matrix is used by OpenCV to reproject disparity images into 3D space.
+     *
+     * @see cv::cuda::reprojectImageTo3D
+     */
     cv::Mat Q;
 };
 
