@@ -383,7 +383,9 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     // the "global" scale, but seems not to always hold at thread block level.
     CRPoint* borderPixels;
     unsigned int* borderCount;
+    label_t* newLabels;
 
+    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
     CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&borderPixels, sizeof(CRPoint) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
     CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&borderCount, sizeof(unsigned int), stream));
 
@@ -397,17 +399,14 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     };
 
     unsigned int hostBorderCount;
-
-    label_t* newLabels;
-    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
-
+    dim3 threadsPerBlockBorder(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 numBlocksBorder(ceil(labelImage.cols / (THREADS_PER_BLOCK_X * X_BATCH)), ceil(labelImage.rows / (THREADS_PER_BLOCK_Y * Y_BATCH)));
+    
     for (size_t i = 0; i < numIterations; i++) {
         // Reset the border count
         CUDA_SAFE_CALL(this->logger, cudaMemsetAsync(borderCount, 0, sizeof(unsigned int), stream));
 
         // Find the border pixels
-        dim3 threadsPerBlockBorder(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-        dim3 numBlocksBorder(ceil(labelImage.cols / (THREADS_PER_BLOCK_X * X_BATCH)), ceil(labelImage.rows / (THREADS_PER_BLOCK_Y * Y_BATCH)));
         findBorderPixels<<<numBlocksBorder, threadsPerBlockBorder, 0, stream>>>(labelImage, borderPixels, borderCount);
 
         CUDA_SAFE_CALL(this->logger, cudaMemcpyAsync(&hostBorderCount, borderCount, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
@@ -429,8 +428,6 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
     // Free the memory
     deleteFeatures<<<1, 1, 0, stream>>>(cudaFeatures, this->features.size());
-    CUDA_SAFE_CALL(this->logger, cudaGetLastError());
-    CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
 
     CUDA_SAFE_CALL(this->logger, cudaFreeAsync(borderPixels, stream));
     CUDA_SAFE_CALL(this->logger, cudaFreeAsync(borderCount, stream));

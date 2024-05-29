@@ -7,6 +7,7 @@
 #include "modules/optflow.hpp"
 #include "modules/planeseg.hpp"
 #include "modules/superpixels.hpp"
+#include "modules/depth.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/opencv.hpp"
@@ -26,10 +27,10 @@ int main(int argc, char* argv[]) {
     // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
-    system->addModule<cart::SuperPixelModule>();
+    //system->addModule<cart::SuperPixelModule>();
     //system->addModule<cart::SuperPixelVisualizationModule>();
 
-    system->addModule<cart::ImageOpticalFlowModule>();
+    //system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
     system->addModule<cart::ZEDImageDisparityModule>();
@@ -39,11 +40,14 @@ int main(int argc, char* argv[]) {
     system->addModule<cart::ImageDisparityDerivativeModule>();
     // system->addModule<cart::ImageDisparityDerivativeVisualizationModule>();
 
-    auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(2, 13), std::make_pair(-3, 2));
+    system->addModule<cart::DepthModule>();
+    system->addModule<cart::DepthVisualizationModule>();
+
+    //auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(2, 13), std::make_pair(-3, 2));
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     // system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
-    system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
+    //system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
+    //system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());

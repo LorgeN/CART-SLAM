@@ -126,6 +126,10 @@ boost::shared_ptr<SystemRunData> System::getRunById(const uint32_t id) {
     return this->runs[id - firstElementId];
 }
 
+const boost::shared_ptr<const DataSource> System::getDataSource() const {
+    return this->dataSource;
+}
+
 boost::future<void> System::run() {
     if (this->modules.size() == 0) {
         throw std::invalid_argument("No modules have been added to the system");

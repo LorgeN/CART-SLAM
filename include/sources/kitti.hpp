@@ -12,6 +12,7 @@ class KITTIDataSource : public DataSource {
     KITTIDataSource(std::string path);
     bool hasNext() override;
     DataElementType getProvidedType() override;
+    const CameraIntrinsics getCameraIntrinsics() const override;
 
    protected:
     boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) override;

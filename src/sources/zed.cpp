@@ -35,6 +35,28 @@ ZEDDataSource::~ZEDDataSource() {
     this->camera->close();
 }
 
+const CameraIntrinsics ZEDDataSource::getCameraIntrinsics() const {
+    auto info = this->camera->getCameraInformation().camera_configuration.calibration_parameters;
+
+    CameraIntrinsics intrinsics;
+    intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
+
+    float Lcx = info.left_cam.cx;
+    float Lcy = info.left_cam.cy;
+    float Lfx = info.left_cam.fx;
+    float Rcx = info.right_cam.cx;
+    float Baseline = info.getCameraBaseline();
+
+    intrinsics.Q.at<float>(0, 3) = -1 * Lcx;
+    intrinsics.Q.at<float>(1, 3) = -1 * Lcy;
+    intrinsics.Q.at<float>(2, 2) = 0;
+    intrinsics.Q.at<float>(2, 3) = Lfx;
+    intrinsics.Q.at<float>(3, 2) = -1.0 / Baseline;
+    intrinsics.Q.at<float>(3, 3) = ((Lcx - Rcx) / Baseline);
+
+    return intrinsics;
+}
+
 bool ZEDDataSource::hasNext() {
     if (!this->hasGrabbed) {
         this->grabResult = this->camera->grab();

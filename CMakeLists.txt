@@ -27,6 +27,7 @@ add_executable( cart_slam
     src/sources/kitti.cpp
     src/sources/zed.cpp
     src/logging.cpp 
+    src/modules/depth.cpp 
     src/modules/features.cpp 
     src/modules/optflow.cpp
     src/modules/disparity/derivative.cu

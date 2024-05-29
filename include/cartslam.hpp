@@ -127,6 +127,7 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     void insertGlobalData(const std::string key, boost::shared_ptr<void> data);
     void insertGlobalData(system_data_pair_t data);
 
+    const boost::shared_ptr<const DataSource> getDataSource() const;
    private:
     log4cxx::LoggerPtr logger;
     boost::asio::thread_pool threadPool = boost::asio::thread_pool(CARTSLAM_WORKER_THREADS);

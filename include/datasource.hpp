@@ -11,6 +11,10 @@
 namespace cart {
 typedef cv::cuda::GpuMat image_t;
 
+struct CameraIntrinsics {
+    cv::Mat Q;
+};
+
 enum DataElementType {
     STEREO
 };
@@ -61,6 +65,7 @@ class DataSource {
     boost::shared_ptr<DataElement> getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream);
     virtual bool hasNext() = 0;
     virtual DataElementType getProvidedType() = 0;
+    virtual const CameraIntrinsics getCameraIntrinsics() const = 0;
 
    protected:
     virtual boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) = 0;

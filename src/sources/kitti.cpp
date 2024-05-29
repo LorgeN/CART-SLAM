@@ -23,6 +23,12 @@ KITTIDataSource::KITTIDataSource(std::string path) {
     this->currentFrame = 0;
 }
 
+const CameraIntrinsics KITTIDataSource::getCameraIntrinsics() const {
+    // TODO: Implement
+    CameraIntrinsics intrinsics;
+    return intrinsics;
+};
+
 DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
 }
