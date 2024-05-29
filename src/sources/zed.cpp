@@ -41,18 +41,18 @@ const CameraIntrinsics ZEDDataSource::getCameraIntrinsics() const {
     CameraIntrinsics intrinsics;
     intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
 
-    float Lcx = info.left_cam.cx;
-    float Lcy = info.left_cam.cy;
-    float Lfx = info.left_cam.fx;
-    float Rcx = info.right_cam.cx;
-    float Baseline = info.getCameraBaseline();
+    float left_cx = info.left_cam.cx;
+    float left_cy = info.left_cam.cy;
+    float left_fx = info.left_cam.fx;
+    float right_cx = info.right_cam.cx;
+    float baseline = info.getCameraBaseline();
 
-    intrinsics.Q.at<float>(0, 3) = -1 * Lcx;
-    intrinsics.Q.at<float>(1, 3) = -1 * Lcy;
+    intrinsics.Q.at<float>(0, 3) = -1 * left_cx;
+    intrinsics.Q.at<float>(1, 3) = -1 * left_cy;
     intrinsics.Q.at<float>(2, 2) = 0;
-    intrinsics.Q.at<float>(2, 3) = Lfx;
-    intrinsics.Q.at<float>(3, 2) = -1.0 / Baseline;
-    intrinsics.Q.at<float>(3, 3) = ((Lcx - Rcx) / Baseline);
+    intrinsics.Q.at<float>(2, 3) = left_fx;
+    intrinsics.Q.at<float>(3, 2) = -1.0 / baseline;
+    intrinsics.Q.at<float>(3, 3) = ((left_cx - right_cx) / baseline);
 
     return intrinsics;
 }

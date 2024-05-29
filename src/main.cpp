@@ -23,8 +23,8 @@ int main(int argc, char* argv[]) {
 
     cart::configureLogging("app.log");
 
-    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
-    // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
+    // auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
+    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
     auto system = boost::make_shared<cart::System>(dataSource);
 
     //system->addModule<cart::SuperPixelModule>();
@@ -33,11 +33,11 @@ int main(int argc, char* argv[]) {
     //system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
 
-    system->addModule<cart::ZEDImageDisparityModule>();
-    // system->addModule<cart::ImageDisparityModule>(1, 256, 3, 5, 3);
-    // system->addModule<cart::ImageDisparityVisualizationModule>();
+    // system->addModule<cart::ZEDImageDisparityModule>();
+    system->addModule<cart::ImageDisparityModule>(1, 256, 3, 5, 3);
+    system->addModule<cart::ImageDisparityVisualizationModule>();
 
-    system->addModule<cart::ImageDisparityDerivativeModule>();
+    // system->addModule<cart::ImageDisparityDerivativeModule>();
     // system->addModule<cart::ImageDisparityDerivativeVisualizationModule>();
 
     system->addModule<cart::DepthModule>();
