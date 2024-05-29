@@ -73,7 +73,6 @@ __global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> la
 __device__ void getNeighbourLabels(cart::contour::label_t* const neighbourhood, cart::contour::label_t* neighbourLabels, size_t& neighbourLabelCount) {
     // Finds the unique neighbouring labels of the current pixel and stores them in the neighbourLabels array using a method similar to insertion sort
 
-
     for (int i = -1; i <= 1; i++) {
         for (int j = -1; j <= 1; j++) {
             cart::contour::label_t label = neighbourhood[NEIGHBOUR_INDEX(i, j)];
@@ -81,7 +80,12 @@ __device__ void getNeighbourLabels(cart::contour::label_t* const neighbourhood, 
                 continue;
             }
 
-             // Due to the small size of the neighbourhood, we can use a simple linear search to find the label
+            // Due to the small size of the neighbourhood, we can use a simple linear search to find the label. Using
+            // a bitset was attempted, but there are a lot of complications with that approach, most notably it requiring
+            // a lot of memory, and a dynamic size that is not known at compile time since it depends on max label.
+            // Using shared memory also makes it somewhat tricky to use a bitset, since there is no good way to reset it.
+            // An idea that could potentially be expanded on is the fact that neighbouring labels should be quite close together,
+            // meaning it may be possible to use a bitset with a smaller fixed size.
             bool found = false;
             for (size_t k = 0; k < neighbourLabelCount; k++) {
                 if (neighbourLabels[k] == label) {
@@ -144,6 +148,9 @@ __global__ void findBorderPixels(cv::cuda::PtrStepSz<cart::contour::label_t> lab
                                  cart::contour::CRPoint* borderPixels,
                                  unsigned int* borderCount) {
     __shared__ cart::contour::label_t sharedLabels[SHARED_SIZE(X_BATCH, Y_BATCH)];
+    // Note that this is a shared memory allocation that could in theory cover every pixel. There was some artifacting
+    // when allocating half of the block size, so it seems that in some cases the assumption that half of the pixels are
+    // border pixels does not hold.
     __shared__ cart::contour::CRPoint borderPixelsShared[THREADS_PER_BLOCK_X * THREADS_PER_BLOCK_Y * X_BATCH * Y_BATCH];
     __shared__ unsigned int borderCountShared;
     __shared__ unsigned int startingIndex;
@@ -372,7 +379,8 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     dim3 numBlocks(ceil(this->labelImage.cols / (threadsPerBlock.x * X_BATCH)), ceil(this->labelImage.rows / (threadsPerBlock.y * Y_BATCH)));
     initializeStatisticsKernel<<<numBlocks, threadsPerBlock, 0, stream>>>(cudaFeatures, this->features.size(), this->labelImage);
 
-    // Allocate memory for the border pixels. Assume that at most half of the image is border pixels.
+    // Allocate memory for the border pixels. Assume that at most half of the image is border pixels. This assumption appears to hold on
+    // the "global" scale, but seems not to always hold at thread block level.
     CRPoint* borderPixels;
     unsigned int* borderCount;
 
