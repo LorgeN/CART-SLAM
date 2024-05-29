@@ -10,12 +10,16 @@
 
 #define THREADS_PER_BLOCK_X 16
 #define THREADS_PER_BLOCK_Y 16
+#define THREADS_PER_BLOCK_RELAX 64
 #define X_BATCH 4
 #define Y_BATCH 4
 #define POINT_BATCH 8
 
 #define SHARED_SIZE(x, y) ((x) * (2 + THREADS_PER_BLOCK_X)) * ((y) * (2 + THREADS_PER_BLOCK_Y))
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 1, 1, sharedRowStep)
+
+#define NEIGHBOUR_INDEX(x, y) ((x + 1) + (y + 1) * 3)
+#define OUT_OF_BOUNDS (1 << 14)  // A value that is guaranteed to be out of bounds
 
 __global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> labels, cv::cuda::PtrStepSz<uint8_t> out) {
     __shared__ cart::contour::label_t sharedLabels[SHARED_SIZE(X_BATCH, Y_BATCH)];
@@ -66,22 +70,18 @@ __global__ void computeBoundaries(cv::cuda::PtrStepSz<cart::contour::label_t> la
     }
 }
 
-__device__ void getNeighbourLabels(const cv::cuda::PtrStepSz<cart::contour::label_t> labelImage, int x, int y, cart::contour::label_t* neighbourLabels, size_t& neighbourLabelCount) {
+__device__ void getNeighbourLabels(cart::contour::label_t* const neighbourhood, cart::contour::label_t* neighbourLabels, size_t& neighbourLabelCount) {
     // Finds the unique neighbouring labels of the current pixel and stores them in the neighbourLabels array using a method similar to insertion sort
-    size_t step = labelImage.step / sizeof(cart::contour::label_t);
+
 
     for (int i = -1; i <= 1; i++) {
         for (int j = -1; j <= 1; j++) {
-            int xCurr = x + j;
-            int yCurr = y + i;
-
-            if (xCurr < 0 || yCurr < 0 || xCurr >= labelImage.cols || yCurr >= labelImage.rows) {
+            cart::contour::label_t label = neighbourhood[NEIGHBOUR_INDEX(i, j)];
+            if (label == OUT_OF_BOUNDS) {
                 continue;
             }
 
-            cart::contour::label_t label = labelImage[INDEX(xCurr, yCurr, step)];
-
-            // Due to the small size of the neighbourhood, we can use a simple linear search to find the label
+             // Due to the small size of the neighbourhood, we can use a simple linear search to find the label
             bool found = false;
             for (size_t k = 0; k < neighbourLabelCount; k++) {
                 if (neighbourLabels[k] == label) {
@@ -97,42 +97,40 @@ __device__ void getNeighbourLabels(const cv::cuda::PtrStepSz<cart::contour::labe
     }
 }
 
-__device__ inline int checkClique(const cart::contour::CRSettings settings, const cart::contour::CRPoint curPixelCoords, const cart::contour::label_t label, const int xOff, const int yOff) {
-    int x = curPixelCoords.x + xOff;  // Use signed int since these may actually become negative
-    int y = curPixelCoords.y + yOff;
-
-    return !(x >= settings.labelImage.cols || y >= settings.labelImage.rows || x < 0 || y < 0) && (settings.labelImage[INDEX(x, y, settings.labelImage.step / sizeof(cart::contour::label_t))] != label);
+__device__ inline int checkClique(cart::contour::label_t* const neighbourhood, const cart::contour::label_t label, const int x, const int y) {
+    cart::contour::label_t neighbour = neighbourhood[NEIGHBOUR_INDEX(x, y)];
+    return neighbour != OUT_OF_BOUNDS && neighbour != label;
 }
 
-__device__ double calculateCliqueCost(const cart::contour::CRSettings settings, const cart::contour::CRPoint curPixelCoords, const cart::contour::label_t pretendLabel) {
+__device__ double calculateCliqueCost(const cart::contour::CRSettings settings, cart::contour::label_t* const neighbourhood, const cart::contour::label_t pretendLabel) {
     // Find number of (direct / diagonal) cliques around pixelIndex, pretending the pixel at
     // curPixelCoords belongs to pretendLabel. Then calculate and return the associated combined cost.
 
     // Direct cliques.
     int numDirectCliques = 0;
-    numDirectCliques += checkClique(settings, curPixelCoords, pretendLabel, -1, 0);
-    numDirectCliques += checkClique(settings, curPixelCoords, pretendLabel, 1, 0);
-    numDirectCliques += checkClique(settings, curPixelCoords, pretendLabel, 0, -1);
-    numDirectCliques += checkClique(settings, curPixelCoords, pretendLabel, 0, 1);
+    numDirectCliques += checkClique(neighbourhood, pretendLabel, -1, 0);
+    numDirectCliques += checkClique(neighbourhood, pretendLabel, 1, 0);
+    numDirectCliques += checkClique(neighbourhood, pretendLabel, 0, -1);
+    numDirectCliques += checkClique(neighbourhood, pretendLabel, 0, 1);
 
     // Diagonal cliques.
     int numDiagonalCliques = 0;
-    numDiagonalCliques += checkClique(settings, curPixelCoords, pretendLabel, -1, -1);
-    numDiagonalCliques += checkClique(settings, curPixelCoords, pretendLabel, -1, 1);
-    numDiagonalCliques += checkClique(settings, curPixelCoords, pretendLabel, 1, -1);
-    numDiagonalCliques += checkClique(settings, curPixelCoords, pretendLabel, 1, 1);
+    numDiagonalCliques += checkClique(neighbourhood, pretendLabel, -1, -1);
+    numDiagonalCliques += checkClique(neighbourhood, pretendLabel, -1, 1);
+    numDiagonalCliques += checkClique(neighbourhood, pretendLabel, 1, -1);
+    numDiagonalCliques += checkClique(neighbourhood, pretendLabel, 1, 1);
 
     // Calculate and return the combined clique cost.
     return numDirectCliques * settings.directCliqueCost + numDiagonalCliques * settings.diagonalCliqueCost;
 }
 
-__device__ double calculateCost(const cart::contour::CRSettings settings, const cart::contour::CRPoint curPixelCoords,
+__device__ double calculateCost(const cart::contour::CRSettings settings, cart::contour::label_t* const neighbourhood, const cart::contour::CRPoint curPixelCoords,
                                 const cart::contour::label_t pretendLabel, const cart::contour::label_t* neighbourLabels, size_t neighbourLabelCount) {
     // Calculate clique cost.
-    double cost = calculateCliqueCost(settings, curPixelCoords, pretendLabel);
+    double cost = calculateCliqueCost(settings, neighbourhood, pretendLabel);
 
     // Calculate and add up the costs of all features.
-    const cart::contour::label_t oldLabel = settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, settings.labelImage.step / sizeof(cart::contour::label_t))];
+    const cart::contour::label_t oldLabel = neighbourhood[NEIGHBOUR_INDEX(0, 0)];
 
     for (size_t i = 0; i < settings.numFeatures; i++) {
         auto feature = settings.features[i];
@@ -146,10 +144,9 @@ __global__ void findBorderPixels(cv::cuda::PtrStepSz<cart::contour::label_t> lab
                                  cart::contour::CRPoint* borderPixels,
                                  unsigned int* borderCount) {
     __shared__ cart::contour::label_t sharedLabels[SHARED_SIZE(X_BATCH, Y_BATCH)];
+    __shared__ cart::contour::CRPoint borderPixelsShared[THREADS_PER_BLOCK_X * THREADS_PER_BLOCK_Y * X_BATCH * Y_BATCH];
     __shared__ unsigned int borderCountShared;
     __shared__ unsigned int startingIndex;
-    __shared__ cart::contour::CRPoint borderPixelsShared[(THREADS_PER_BLOCK_X * THREADS_PER_BLOCK_Y * X_BATCH * Y_BATCH) / 2];
-
     if (threadIdx.x == 0 && threadIdx.y == 0) {
         borderCountShared = 0;
     }
@@ -220,22 +217,43 @@ __global__ void performRelaxation(
     cart::contour::CRPoint* borderPixels,
     cart::contour::label_t* newLabels,
     unsigned int* borderCount) {
-    // TODO: Move neighbouring labels to shared memory
-    size_t baseIndex = (blockIdx.x * blockDim.x + threadIdx.x) * POINT_BATCH;
+    __shared__ cart::contour::label_t neighboursShared[THREADS_PER_BLOCK_RELAX * 9];
+    __shared__ cart::contour::label_t neighbourhoods[THREADS_PER_BLOCK_RELAX * 9];
+
+    const size_t baseIndex = blockIdx.x * blockDim.x * POINT_BATCH + threadIdx.x;
+    const size_t labelStep = settings.labelImage.step / sizeof(cart::contour::label_t);
+
+    cart::contour::label_t* const neighbours = neighboursShared + threadIdx.x * 9;
+    // These are used to calculate neighbours and to calculate clique cost, so we copy to shared to avoid reading twice
+    cart::contour::label_t* const neighbourhood = neighbourhoods + threadIdx.x * 9;
 
     for (size_t i = 0; i < POINT_BATCH; i++) {
-        size_t index = baseIndex + i;
+        size_t index = baseIndex + i * blockDim.x;
         if (index >= *borderCount) {
             return;
         }
 
         cart::contour::CRPoint curPixelCoords = borderPixels[index];
-        cart::contour::label_t neighbours[9];
+        cart::contour::label_t currLabel = settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, labelStep)];
+
+        // Copy 8-neighbourhood to shared memory
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                int xCurr = curPixelCoords.x + x;
+                int yCurr = curPixelCoords.y + y;
+
+                if (xCurr < 0 || yCurr < 0 || xCurr >= settings.labelImage.cols || yCurr >= settings.labelImage.rows) {
+                    neighbourhood[NEIGHBOUR_INDEX(x, y)] = OUT_OF_BOUNDS;  // Set to a value that is guaranteed to not be a label
+                    continue;
+                }
+
+                neighbourhood[NEIGHBOUR_INDEX(x, y)] = settings.labelImage[INDEX(xCurr, yCurr, labelStep)];
+            }
+        }
+
         size_t neighbourLabelCount = 0;
 
-        getNeighbourLabels(settings.labelImage, curPixelCoords.x, curPixelCoords.y, neighbours, neighbourLabelCount);
-
-        cart::contour::label_t currLabel = settings.labelImage[INDEX(curPixelCoords.x, curPixelCoords.y, settings.labelImage.step / sizeof(cart::contour::label_t))];
+        getNeighbourLabels(neighbourhood, neighbours, neighbourLabelCount);
 
         double minCost = DBL_MAX;
         cart::contour::label_t bestLabel = currLabel;
@@ -243,7 +261,7 @@ __global__ void performRelaxation(
         // This is not great, and may lead to a lot of divergence. However, it is the best we can do for now.
         // An alternative is to do another step where we further process each pixel to a given neighbour value per thread or something similar
         for (size_t i = 0; i < neighbourLabelCount; i++) {
-            double cost = calculateCost(settings, curPixelCoords, neighbours[i], neighbours, neighbourLabelCount);
+            double cost = calculateCost(settings, neighbourhood, curPixelCoords, neighbours[i], neighbours, neighbourLabelCount);
 
             if (cost < minCost) {
                 minCost = cost;
@@ -390,9 +408,9 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
 
         // Perform the relaxation
-        size_t gridSize = ceil(hostBorderCount / (128.0 * POINT_BATCH));
-        performRelaxation<<<gridSize, 128, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
-        updateLabels<<<gridSize, 128, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
+        size_t gridSize = ceil(hostBorderCount / (static_cast<double>(THREADS_PER_BLOCK_RELAX) * POINT_BATCH));
+        performRelaxation<<<gridSize, THREADS_PER_BLOCK_RELAX, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
+        updateLabels<<<gridSize, THREADS_PER_BLOCK_RELAX, 0, stream>>>(settings, borderPixels, newLabels, borderCount);
     }
 
     // Return the resulting label image.

@@ -51,6 +51,10 @@ class ContourRelaxation {
 
     template <typename T, typename... Args>
     void addFeature(const double weight, Args... args) {
+        if (weight <= 0) {
+            return;
+        }
+
         this->addFeature(boost::make_shared<T>(args...), weight);
     }
 

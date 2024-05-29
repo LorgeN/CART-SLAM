@@ -2,7 +2,13 @@
 
 #include "modules/disparity.hpp"
 #include "modules/superpixels.hpp"
+
+#ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
+#include "modules/superpixels/contourrelaxation/features/grayvalue.cuh"
+#else
 #include "modules/superpixels/contourrelaxation/features/color.cuh"
+#endif
+
 #include "modules/superpixels/contourrelaxation/features/compactness.cuh"
 #include "modules/superpixels/contourrelaxation/features/disparity.cuh"
 #include "modules/superpixels/visualization.cuh"
@@ -11,12 +17,17 @@
 namespace cart {
 SuperPixelModule::SuperPixelModule(
     const unsigned int initialIterations,
+    const unsigned int iterations,
     const unsigned int blockWidth,
     const unsigned int blockHeight,
     const double directCliqueCost,
-    const double compactnessWeight)
-    : SuperPixelModule::SyncWrapperSystemModule("SuperPixelDetect", {CARTSLAM_KEY_DISPARITY_DERIVATIVE}),
-      initialIterations(initialIterations) {
+    const double diagonalCliqueCost,
+    const double compactnessWeight,
+    const double imageWeight,
+    const double disparityWeight)
+    : SuperPixelModule::SyncWrapperSystemModule("SuperPixelDetect", disparityWeight == 0 ? std::vector<std::string>() : std::vector<std::string>{CARTSLAM_KEY_DISPARITY_DERIVATIVE}),
+      initialIterations(initialIterations),
+      iterations(iterations) {
     if (blockWidth < 1 || blockHeight < 1) {
         throw std::invalid_argument("blockWidth and blockHeight must be more than 1");
     }
@@ -25,22 +36,22 @@ SuperPixelModule::SuperPixelModule(
         throw std::invalid_argument("directCliqueCost must be non-negative");
     }
 
-    if (compactnessWeight < 0) {
-        throw std::invalid_argument("compactnessWeight must be non-negative");
+    if (compactnessWeight < 0 || imageWeight < 0 || disparityWeight < 0) {
+        throw std::invalid_argument("weight must be non-negative");
     }
 
     cv::cuda::GpuMat initialLabelImage;
     contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, this->maxLabelId);
 
-    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, directCliqueCost / sqrt(2));
+    this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, diagonalCliqueCost);
+
     this->contourRelaxation->addFeature<contour::CompactnessFeature>(compactnessWeight);
+    this->contourRelaxation->addFeature<contour::DisparityFeature>(disparityWeight);
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-    this->contourRelaxation->addFeature<contour::DisparityFeature>(0.6);
-    this->contourRelaxation->addFeature<contour::GrayvalueFeature>(0.75);
+    this->contourRelaxation->addFeature<contour::GrayvalueFeature>(imageWeight);
 #else
-    this->contourRelaxation->addFeature<contour::DisparityFeature>(1.5);
-    this->contourRelaxation->addFeature<contour::ColorFeature>(0.75);
+    this->contourRelaxation->addFeature<contour::ColorFeature>(imageWeight);
 #endif
 }
 
@@ -62,7 +73,7 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
 
     auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
 
-    const unsigned int numIterations = data.id == 1 ? this->initialIterations : 8;
+    const unsigned int numIterations = data.id == 1 ? this->initialIterations : this->iterations;
 
     cv::cuda::GpuMat relaxedLabelImage;
 

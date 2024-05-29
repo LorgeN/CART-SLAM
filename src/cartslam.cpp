@@ -206,11 +206,7 @@ boost::future<void> System::run() {
         }
 
         runData->markAsComplete();
-        LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed. Available data keys: ");
-
-        for (auto& data : runData->getDataKeys()) {
-            LOG4CXX_INFO(logger, " - " << std::quoted(data));
-        }
+        LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed.");
 
         boost::lock_guard<boost::shared_mutex> lock(this->runMutex);
         this->runCondition.notify_all();

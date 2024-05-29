@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     auto system = boost::make_shared<cart::System>(dataSource);
 
     system->addModule<cart::SuperPixelModule>();
-    // system->addModule<cart::SuperPixelVisualizationModule>();
+    //system->addModule<cart::SuperPixelVisualizationModule>();
 
     system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     // system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
     system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(true, true);
+    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
 
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
