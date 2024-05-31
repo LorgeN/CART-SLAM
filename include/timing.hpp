@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <atomic>
 
 #define CARTSLAM_END_TIMING_SILENT(name) \
     auto name##_end = std::chrono::high_resolution_clock::now();
@@ -17,15 +18,15 @@
              << std::endl
 
 #define CARTSLAM_START_AVERAGE_TIMING(name) \
-    int name##_average_count = 0;           \
-    long long name##_average_total = 0
+    std::atomic_uint name##_average_count = 0;           \
+    std::atomic_ullong name##_average_total = 0
 #define CARTSLAM_INCREMENT_AVERAGE_TIMING(name)                                                                      \
-    name##_average_total += std::chrono::duration_cast<std::chrono::nanoseconds>(name##_end - name##_start).count(); \
+    name##_average_total += std::chrono::duration_cast<std::chrono::milliseconds>(name##_end - name##_start).count(); \
     name##_average_count++
 #define CARTSLAM_END_AVERAGE_TIMING(name)                                                                                         \
-    std::cout << "TIMING AVERAGE: " << #name << " - " << name##_average_total / (name##_average_count * 1000000) << "ms (Total: " \
-              << name##_average_total / 1000000 << "ms) (" << name##_average_count << " runs, "                                   \
-              << 1000000000.0 / (name##_average_total / name##_average_count) << " FPS)" << std::endl
+    std::cout << "TIMING AVERAGE: " << #name << " - " << name##_average_total / name##_average_count << "ms (Total: " \
+              << name##_average_total << "ms) (" << name##_average_count << " runs, "                                   \
+              << 1000.0 / (name##_average_total / name##_average_count) << " FPS)" << std::endl
 
 #else
 

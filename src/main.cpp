@@ -57,16 +57,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    CARTSLAM_START_AVERAGE_TIMING(system);
-
     auto logger = cart::getLogger("main");
 
     boost::future<void> last;
 
     while (dataSource->hasNext()) {
-        // Not technically accurate timing because runs are async, but good enough for our purposes for now
-        CARTSLAM_START_TIMING(system);
-
         last = system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();
@@ -74,15 +69,10 @@ int main(int argc, char* argv[]) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
             }
         });
-
-        CARTSLAM_END_TIMING(system);
-        CARTSLAM_INCREMENT_AVERAGE_TIMING(system);
     }
 
     last.get();
 
     system->getThreadPool().join();
-
-    CARTSLAM_END_AVERAGE_TIMING(system);
     return 0;
 }

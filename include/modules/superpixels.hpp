@@ -25,8 +25,8 @@ namespace cart {
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
-        const unsigned int initialIterations = 32,
-        const unsigned int iterations = 12,
+        const unsigned int initialIterations = 18,
+        const unsigned int iterations = 6,
         const unsigned int blockWidth = 12,
         const unsigned int blockHeight = 12,
         const double directCliqueCost = 0.5,
