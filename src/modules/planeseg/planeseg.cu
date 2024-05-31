@@ -1,6 +1,7 @@
 #include <opencv2/core/cuda_stream_accessor.hpp>
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/planeseg.hpp"
 #include "timing.hpp"
@@ -12,7 +13,6 @@
 #define LOW_PASS_FILTER_PADDING (LOW_PASS_FILTER_SIZE / 2)
 
 #define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)
-#define CARTSLAM_PLANE_TEMPORAL_DISTANCE (CARTSLAM_RUN_RETENTION - CARTSLAM_CONCURRENT_RUN_LIMIT)
 
 #define THREADS_PER_BLOCK_X 32
 #define THREADS_PER_BLOCK_Y 32
@@ -303,15 +303,15 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
         LOG4CXX_DEBUG(this->logger, "Using temporal smoothing");
         smoothed.create(disparity->size(), CV_8UC1);
 
-        cv_mat_ptr_t<uint8_t> previousPlanesHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE];
+        cv_mat_ptr_t<uint8_t> previousPlanesHost[this->temporalSmoothingDistance];
 
         auto optFlowCurr = data.getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
 
-        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
+        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[this->temporalSmoothingDistance] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
                                                                                                    optFlowCurr->flow.step}};
 
         // Copy previous planes to constant memory
-        for (int i = 1; i <= CARTSLAM_PLANE_TEMPORAL_DISTANCE; i++) {
+        for (int i = 1; i <= this->temporalSmoothingDistance; i++) {
             if (data.id - i <= 0) {
                 break;
             }
@@ -321,7 +321,7 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
             LOG4CXX_DEBUG(this->logger, "Getting previous planes from " << relativeRun->id << " (id: " << data.id << ", i: " << i << ")");
 
             // Block until available
-            auto prev = relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
+            auto prev = relativeRun->getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED);
             previousPlanesHost[previousPlaneCount] = {
                 static_cast<uint8_t*>(prev->cudaPtr()),
                 prev->step,
@@ -329,9 +329,9 @@ system_data_t DisparityPlaneSegmentationModule::runInternal(System& system, Syst
 
             previousPlaneCount++;
 
-            if (relativeRun->id > 1 && previousPlaneCount < CARTSLAM_PLANE_TEMPORAL_DISTANCE) {
+            if (relativeRun->id > 1 && previousPlaneCount < this->temporalSmoothingDistance) {
                 LOG4CXX_DEBUG(this->logger, "Getting optical flow from " << relativeRun->id);
-                auto optFlow = relativeRun->getDataAsync<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW).get();
+                auto optFlow = relativeRun->getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
                 previousOpticalFlowHost[previousPlaneCount] = {
                     static_cast<optical_flow_t*>(optFlow->flow.cudaPtr()),
                     optFlow->flow.step};

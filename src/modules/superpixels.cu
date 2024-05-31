@@ -1,5 +1,6 @@
 #include <opencv2/cudaimgproc.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/superpixels.hpp"
 
@@ -25,7 +26,7 @@ SuperPixelModule::SuperPixelModule(
     const double compactnessWeight,
     const double imageWeight,
     const double disparityWeight)
-    : SuperPixelModule::SyncWrapperSystemModule("SuperPixelDetect", disparityWeight == 0 ? std::vector<std::string>() : std::vector<std::string>{CARTSLAM_KEY_DISPARITY_DERIVATIVE}),
+    : SyncWrapperSystemModule("SuperPixelDetect"),
       initialIterations(initialIterations),
       iterations(iterations) {
     if (blockWidth < 1 || blockHeight < 1) {
@@ -39,6 +40,13 @@ SuperPixelModule::SuperPixelModule(
     if (compactnessWeight < 0 || imageWeight < 0 || disparityWeight < 0) {
         throw std::invalid_argument("weight must be non-negative");
     }
+
+    if (disparityWeight > 0) {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE));
+    }
+
+    this->providesData.push_back(CARTSLAM_KEY_SUPERPIXELS);
+    this->providesData.push_back(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL);
 
     cv::cuda::GpuMat initialLabelImage;
     contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, this->maxLabelId);

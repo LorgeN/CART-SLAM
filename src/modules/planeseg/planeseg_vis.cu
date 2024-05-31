@@ -3,6 +3,7 @@
 #include <opencv2/core/cuda_stream_accessor.hpp>
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/planeseg.hpp"
 #include "timing.hpp"

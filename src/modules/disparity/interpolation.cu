@@ -1,5 +1,6 @@
 #include <opencv2/core/cuda_stream_accessor.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/disparity/interpolation.cuh"
 #include "utils/cuda.cuh"

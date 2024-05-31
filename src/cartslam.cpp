@@ -49,20 +49,6 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
     throw std::runtime_error("System has been destroyed");
 }
 
-boost::future<system_data_t> SyncWrapperSystemModule::run(System& system, SystemRunData& data) {
-    boost::packaged_task<system_data_t> task([this, &system, &data] {
-        LOG4CXX_DEBUG(this->logger, "Running module sync wrapper " << std::quoted(this->name) << " for ID " << data.id);
-        auto value = this->runInternal(system, data);
-        LOG4CXX_DEBUG(this->logger, "Sync wrapper of module " << std::quoted(this->name) << " has completed for ID " << data.id);
-        return value;
-    });
-
-    auto future = task.get_future();
-    LOG4CXX_DEBUG(this->logger, "Submitting wrapper task for ID " << data.id);
-    boost::asio::post(system.getThreadPool(), boost::move(task));
-    return future;
-}
-
 System::System(boost::shared_ptr<DataSource> source) : dataSource(source) {
     this->logger = cart::getLogger("System");
 }
@@ -70,6 +56,105 @@ System::System(boost::shared_ptr<DataSource> source) : dataSource(source) {
 void System::addModule(boost::shared_ptr<SystemModule> module) {
     this->modules.push_back(module);
     LOG4CXX_INFO(this->logger, "Added module " << module->name);
+
+    for (const auto& provides : module->getProvidedData()) {
+        this->dataProvidedBy[provides] = module;
+    }
+}
+
+void System::verifyDependencies() {
+    if (this->verifiedDependencies) {
+        return;
+    }
+
+    for (const auto& module : this->modules) {
+        for (const auto& dependency : module->getRequiredData()) {
+            if (this->dataProvidedBy.find(dependency.name) != this->dataProvidedBy.end()) {
+                continue;
+            }
+
+            throw std::invalid_argument("Module " + module->name + " requires data " + dependency.name + " which is not provided by any module");
+        }
+    }
+
+    this->verifiedDependencies = true;
+}
+
+bool compareByOffset(const module_dependency_t& a, const module_dependency_t& b) {
+    return a.runOffset > b.runOffset;
+}
+
+boost::future<void> System::waitForDependencies(const std::vector<module_dependency_t>& dependencies, boost::shared_ptr<SystemRunData> data) {
+    if (dependencies.empty()) {
+        return boost::make_ready_future();
+    }
+
+    // Sort by descending run offset
+    std::vector<module_dependency_t> dependenciesCopy = dependencies;
+    std::sort(dependenciesCopy.begin(), dependenciesCopy.end(), compareByOffset);
+
+    std::vector<boost::future<void>> futures;
+
+    std::vector<std::string> requiredData;
+    int8_t currentOffset = 0;
+
+    for (const auto& dependency : dependenciesCopy) {
+        if (dependency.runOffset == currentOffset) {
+            requiredData.push_back(dependency.name);
+            continue;
+        }
+
+        if (requiredData.size() > 0) {
+            boost::shared_ptr<SystemRunData> currentRun;
+            if (currentOffset < 0) {
+                currentRun = data->getRelativeRun(currentOffset);
+            } else {
+                currentRun = data;
+            }
+
+            futures.push_back(currentRun->waitForData(requiredData).then([this, currentRun, data](auto future) {
+                try {
+                    future.get();
+                } catch (const std::exception& e) {
+                    LOG4CXX_ERROR(currentRun->getLogger(), "Error waiting for dependencies for run ID " << data->id << " from " << currentRun->id << ": " << cart::getExceptionMessage(e));
+                    std::throw_with_nested(std::runtime_error("Error waiting for dependencies for run ID " + std::to_string(data->id) + " from run ID " + std::to_string(currentRun->id)));
+                }
+            }));
+
+            requiredData.clear();
+        }
+
+        if ((static_cast<int>(data->id) + dependency.runOffset) <= 0) {
+            break;
+        }
+
+        requiredData.push_back(dependency.name);
+        currentOffset = dependency.runOffset;
+    }
+
+    if (requiredData.size() > 0) {
+        boost::shared_ptr<SystemRunData> currentRun;
+        if (currentOffset < 0) {
+            currentRun = data->getRelativeRun(currentOffset);
+        } else {
+            currentRun = data;
+        }
+
+        futures.push_back(currentRun->waitForData(requiredData));
+    }
+
+    return boost::when_all(futures.begin(), futures.end()).then([this, data](auto future) {
+        try {
+            auto futures = future.get();
+
+            for (auto& f : futures) {
+                f.get();
+            }
+        } catch (const std::exception& e) {
+            LOG4CXX_ERROR(data->getLogger(), "Error waiting for dependencies: " << cart::getExceptionMessage(e));
+            std::throw_with_nested(std::runtime_error("Error waiting for dependencies"));
+        }
+    });
 }
 
 uint8_t System::getActiveRunCount() {
@@ -83,6 +168,8 @@ uint8_t System::getActiveRunCount() {
 }
 
 boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
+    this->verifyDependencies();
+
     boost::unique_lock<boost::shared_mutex> lock(this->runMutex);
     auto previousRunId = this->runId;
 
@@ -98,7 +185,6 @@ boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
     auto data = boost::make_shared<SystemRunData>(++this->runId, this->weak_from_this(), element);
     // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
     while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
-        LOG4CXX_DEBUG(this->logger, "Waiting for a run to complete");
         this->runCondition.wait(lock);
     }
 
@@ -147,29 +233,15 @@ boost::future<void> System::run() {
     for (auto module : this->modules) {
         std::string moduleName = "\"" + module->name + "\"";
         LOG4CXX_INFO(this->logger, "Running module " << moduleName);
-        boost::future<system_data_t> future;
 
-        if (module->requiresData.size() > 0) {
-            // TODO: Test this
-            LOG4CXX_DEBUG(this->logger, "Module " << moduleName << " has dependencies");
+        auto requiredData = module->getRequiredData();
+        boost::future<system_data_t> future = this->waitForDependencies(requiredData, runData)
+                                                  .then([this, module, runData, moduleName](auto future) {
+                                                      future.get();
 
-            future = runData->waitForData(module->requiresData)
-                         .then([this, runData, module, moduleName](boost::future<void> future) {
-                             try {
-                                 future.get();
-                             } catch (const std::exception& e) {
-                                 LOG4CXX_ERROR(runData->getLogger(), "Error waiting for data: " << cart::getExceptionMessage(e));
-                                 std::throw_with_nested(std::runtime_error("Error waiting for data"));
-                             }
-
-                             LOG4CXX_DEBUG(runData->getLogger(), "All dependencies have been resolved for module " << moduleName);
-                             return module->run(*this, *runData);
-                         })
-                         .unwrap();
-        } else {
-            LOG4CXX_DEBUG(runData->getLogger(), "Module " << moduleName << " has no dependencies");
-            future = module->run(*this, *runData);
-        }
+                                                      return module->run(*this, *runData);
+                                                  })
+                                                  .unwrap();
 
         LOG4CXX_DEBUG(runData->getLogger(), "Module " << moduleName << " has been submitted for execution");
 
@@ -189,6 +261,8 @@ boost::future<void> System::run() {
                 LOG4CXX_DEBUG(runData->getLogger(), "Got data with key " << std::quoted(data.first) << " from module " << moduleName << " in run " << runData->id);
                 runData->insertData(data);
             }
+
+            LOG4CXX_DEBUG(runData->getLogger(), "Inserted all data from module " << moduleName << " for run ID " << runData->id);
         }));
     }
 
@@ -212,7 +286,6 @@ boost::future<void> System::run() {
         runData->markAsComplete();
         LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed.");
 
-        boost::lock_guard<boost::shared_mutex> lock(this->runMutex);
         this->runCondition.notify_all();
     });
 }

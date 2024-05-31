@@ -1,6 +1,6 @@
 #pragma once
 
-#define CARTSLAM_WORKER_THREADS 16
+#define CARTSLAM_WORKER_THREADS 64
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
 #define CARTSLAM_RUN_RETENTION 32
@@ -24,6 +24,7 @@
 
 #include "datasource.hpp"
 #include "logging.hpp"
+#include "modules/module.hpp"
 #include "opencv2/core/cuda.hpp"
 #include "utils/data.hpp"
 
@@ -56,38 +57,6 @@ class SystemRunData : public DataContainer {
     bool complete = false;
     boost::weak_ptr<System> system;
     log4cxx::LoggerPtr logger;
-};
-
-class SystemModule {
-   public:
-    SystemModule(const std::string& name) : SystemModule(name, {}){};
-
-    SystemModule(const std::string& name, const std::vector<std::string> requiresData) : name(name), requiresData(requiresData) {
-        this->logger = getLogger(name);
-    }
-
-    virtual ~SystemModule() = default;
-    virtual boost::future<system_data_t> run(System& system, SystemRunData& data) = 0;
-
-    const std::vector<std::string> requiresData;
-
-    // TODO: Add check for missing data dependencies
-    // const std::string providesData;
-
-    const std::string name;
-
-   protected:
-    log4cxx::LoggerPtr logger;
-};
-
-class SyncWrapperSystemModule : public SystemModule {
-   public:
-    SyncWrapperSystemModule(const std::string& name) : SystemModule(name){};
-
-    SyncWrapperSystemModule(const std::string& name, const std::vector<std::string> requiresData) : SystemModule(name, requiresData){};
-
-    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
-    virtual system_data_t runInternal(System& system, SystemRunData& data) = 0;
 };
 
 class System : public boost::enable_shared_from_this<System>, public DataContainer {
@@ -128,13 +97,21 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     void insertGlobalData(system_data_pair_t data);
 
     const boost::shared_ptr<const DataSource> getDataSource() const;
+
    private:
+    void verifyDependencies();
+
+    boost::future<void> waitForDependencies(const std::vector<module_dependency_t>& dependencies, boost::shared_ptr<SystemRunData> data);
+
+    bool verifiedDependencies = false;
+
     log4cxx::LoggerPtr logger;
     boost::asio::thread_pool threadPool = boost::asio::thread_pool(CARTSLAM_WORKER_THREADS);
 
     uint32_t runId = 0;
     boost::shared_ptr<DataSource> dataSource;
     std::vector<boost::shared_ptr<SystemModule>> modules;
+    std::map<std::string, boost::shared_ptr<SystemModule>> dataProvidedBy;
     std::vector<boost::shared_ptr<SystemRunData>> runs;
     boost::shared_mutex runMutex;
     boost::condition_variable_any runCondition;

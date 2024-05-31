@@ -4,7 +4,7 @@
 
 #include <opencv2/cudastereo.hpp>
 
-#include "cartslam.hpp"
+#include "module.hpp"
 #include "datasource.hpp"
 #include "modules/disparity/interpolation.cuh"
 #include "utils/ui.hpp"
@@ -19,14 +19,16 @@
 #define SGM_P2(blockSize) (8 * blockSize * blockSize)
 
 namespace cart {
-    
+
 typedef int16_t disparity_t;
 typedef int16_t derivative_t;
 
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(int minDisparity = 1, int numDisparities = 255, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
+    ImageDisparityModule(int minDisparity = 1, int numDisparities = 256, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
         : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations) {
+        this->providesData.push_back(CARTSLAM_KEY_DISPARITY);
+
         this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities, SGM_P1(blockSize), SGM_P2(blockSize), 5);
         this->stereoSGM->setBlockSize(blockSize);
         this->stereoSGM->setSpeckleWindowSize(100);
@@ -44,7 +46,9 @@ class ImageDisparityModule : public SyncWrapperSystemModule {
 #ifdef CARTSLAM_ZED
 class ZEDImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ZEDImageDisparityModule(int smoothingRadius = -1, int smoothingIterations = 5) : SyncWrapperSystemModule("ZEDImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations){};
+    ZEDImageDisparityModule(int smoothingRadius = -1, int smoothingIterations = 5) : SyncWrapperSystemModule("ZEDImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations) {
+        this->providesData.push_back(CARTSLAM_KEY_DISPARITY);
+    };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -56,7 +60,8 @@ class ZEDImageDisparityModule : public SyncWrapperSystemModule {
 
 class ImageDisparityVisualizationModule : public SystemModule {
    public:
-    ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization", {CARTSLAM_KEY_DISPARITY}) {
+    ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY));
         this->imageThread = ImageProvider::create("Disparity");
     };
 
@@ -68,14 +73,19 @@ class ImageDisparityVisualizationModule : public SystemModule {
 
 class ImageDisparityDerivativeModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityDerivativeModule() : SyncWrapperSystemModule("ImageDisparityDerivative", {CARTSLAM_KEY_DISPARITY}){};
+    ImageDisparityDerivativeModule() : SyncWrapperSystemModule("ImageDisparityDerivative") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY));
+        this->providesData.push_back(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
+        this->providesData.push_back(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM);
+    };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 };
 
 class ImageDisparityDerivativeVisualizationModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityDerivativeVisualizationModule() : SyncWrapperSystemModule("ImageDisparityDerivativeVisualization", {CARTSLAM_KEY_DISPARITY_DERIVATIVE}) {
+    ImageDisparityDerivativeVisualizationModule() : SyncWrapperSystemModule("ImageDisparityDerivativeVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE));
         this->imageThread = ImageProvider::create("Disparity Derivative");
     };
 

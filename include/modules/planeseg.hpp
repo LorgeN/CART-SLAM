@@ -5,7 +5,7 @@
 #include <boost/atomic.hpp>
 #include <opencv2/ml.hpp>
 
-#include "cartslam.hpp"
+#include "module.hpp"
 #include "modules/disparity.hpp"
 #include "modules/optflow.hpp"
 #include "modules/superpixels.hpp"
@@ -16,6 +16,8 @@
 #define CARTSLAM_KEY_PLANE_PARAMETERS "plane_parameters"
 #define CARTSLAM_KEY_DISPARITY_DERIVATIVE_HIST "disp_derivative_histogram"
 #define CARTSLAM_PLANE_COUNT 3
+
+#define CARTSLAM_PLANE_TEMPORAL_DISTANCE_DEFAULT 3
 
 namespace cart {
 
@@ -113,13 +115,32 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
    public:
     DisparityPlaneSegmentationModule(
         boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
-        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false)
+        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false, const unsigned int temporalSmoothingDistance = CARTSLAM_PLANE_TEMPORAL_DISTANCE_DEFAULT)
         // Need optical flow for temporal smoothing
-        : SyncWrapperSystemModule("PlaneSegmentation", useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_DISPARITY, CARTSLAM_KEY_OPTFLOW} : std::vector<std::string>{CARTSLAM_KEY_DISPARITY}),
+        : SyncWrapperSystemModule("PlaneSegmentation"),
           planeParameterProvider(planeParameterProvider),
           updateInterval(updateInterval),
           resetInterval(resetInterval),
-          useTemporalSmoothing(useTemporalSmoothing){};
+          useTemporalSmoothing(useTemporalSmoothing),
+          temporalSmoothingDistance(temporalSmoothingDistance) {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY));
+        if (useTemporalSmoothing) {
+            this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW));
+            for (size_t i = 1; i <= this->temporalSmoothingDistance; i++) {
+                this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_PLANES_UNSMOOTHED, -i));
+
+                if ((i + 1) <= this->temporalSmoothingDistance) {
+                    this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW, -i));
+                }
+            }
+        }
+
+        this->providesData.push_back(CARTSLAM_KEY_PLANES);
+
+        if (useTemporalSmoothing) {
+            this->providesData.push_back(CARTSLAM_KEY_PLANES_UNSMOOTHED);
+        }
+    };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -129,6 +150,7 @@ class DisparityPlaneSegmentationModule : public SyncWrapperSystemModule {
     void updatePlaneParameters(System& system, SystemRunData& data);
 
     const bool useTemporalSmoothing;
+    const unsigned int temporalSmoothingDistance;
     const int updateInterval;
     const int resetInterval;
 
@@ -142,15 +164,36 @@ class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModul
    public:
     SuperPixelDisparityPlaneSegmentationModule(
         boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
-        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false)
+        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false, const unsigned int temporalSmoothingDistance = CARTSLAM_PLANE_TEMPORAL_DISTANCE_DEFAULT)
         // Need optical flow for temporal smoothing
-        : SyncWrapperSystemModule("SPPlaneSegmentation",
-                                  useTemporalSmoothing ? std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, CARTSLAM_KEY_OPTFLOW}
-                                                       : std::vector<std::string>{CARTSLAM_KEY_SUPERPIXELS, CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, CARTSLAM_KEY_DISPARITY_DERIVATIVE, CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM}),
+        : SyncWrapperSystemModule("SPPlaneSegmentation"),
           planeParameterProvider(planeParameterProvider),
           updateInterval(updateInterval),
           useTemporalSmoothing(useTemporalSmoothing),
-          resetInterval(resetInterval){};
+          resetInterval(resetInterval),
+          temporalSmoothingDistance(temporalSmoothingDistance) {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS));
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL));
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE));
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM));
+
+        if (useTemporalSmoothing) {
+            this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW));
+            for (size_t i = 1; i <= this->temporalSmoothingDistance; i++) {
+                this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_PLANES_UNSMOOTHED, -i));
+
+                if ((i + 1) <= this->temporalSmoothingDistance) {
+                    this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW, -i));
+                }
+            }
+        }
+
+        this->providesData.push_back(CARTSLAM_KEY_PLANES);
+
+        if (useTemporalSmoothing) {
+            this->providesData.push_back(CARTSLAM_KEY_PLANES_UNSMOOTHED);
+        }
+    };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -160,6 +203,7 @@ class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModul
     void updatePlaneParameters(System& system, SystemRunData& data);
 
     const bool useTemporalSmoothing;
+    const unsigned int temporalSmoothingDistance;
     const int updateInterval;
     const int resetInterval;
 
@@ -172,7 +216,9 @@ class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModul
 class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
    public:
     DisparityPlaneSegmentationVisualizationModule(bool showHistogram = true, bool showStacked = true)
-        : SystemModule("PlaneSegmentationVisualization", {CARTSLAM_KEY_PLANES}), showHistogram(showHistogram), showStacked(showStacked) {
+        : SystemModule("PlaneSegmentationVisualization"), showHistogram(showHistogram), showStacked(showStacked) {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_PLANES));
+
         this->imageThread = ImageProvider::create("Plane Segmentation");
         this->histThread = ImageProvider::create("Plane Segmentation Histogram");
     };

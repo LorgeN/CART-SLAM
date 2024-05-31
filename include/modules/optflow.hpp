@@ -5,14 +5,14 @@
 #include <opencv2/cudastereo.hpp>
 #include <opencv2/opencv.hpp>
 
-#include "cartslam.hpp"
+#include "module.hpp"
 #include "datasource.hpp"
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_OPTFLOW "optflow"
 
 namespace cart {
-    
+
 typedef int16_t optical_flow_t;
 
 cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &stream);
@@ -26,7 +26,9 @@ cv::Mat drawOpticalFlow(const image_optical_flow_t &imageFlow, cv::Ptr<cv::cuda:
 
 class ImageOpticalFlowModule : public SyncWrapperSystemModule {
    public:
-    ImageOpticalFlowModule() : SyncWrapperSystemModule("ImageOpticalFlow"){};
+    ImageOpticalFlowModule() : SyncWrapperSystemModule("ImageOpticalFlow") {
+        this->providesData.push_back(CARTSLAM_KEY_OPTFLOW);
+    };
 
     system_data_t runInternal(System &system, SystemRunData &data) override;
 
@@ -44,7 +46,8 @@ class ImageOpticalFlowModule : public SyncWrapperSystemModule {
 
 class ImageOpticalFlowVisualizationModule : public SystemModule {
    public:
-    ImageOpticalFlowVisualizationModule(int points = 10) : SystemModule("ImageOpticalFlowVisualization", {CARTSLAM_KEY_OPTFLOW}) {
+    ImageOpticalFlowVisualizationModule(int points = 10) : SystemModule("ImageOpticalFlowVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW));
         this->imageThread = ImageProvider::create("Optical Flow");
         this->visualizationPoints = getRandomPoints(points, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y));
     };

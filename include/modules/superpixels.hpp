@@ -2,8 +2,8 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "cartslam.hpp"
 #include "datasource.hpp"
+#include "module.hpp"
 #include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
 #include "utils/ui.hpp"
 
@@ -25,8 +25,8 @@ namespace cart {
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
-        const unsigned int initialIterations = 18,
-        const unsigned int iterations = 6,
+        const unsigned int initialIterations = 32,
+        const unsigned int iterations = 12,
         const unsigned int blockWidth = 12,
         const unsigned int blockHeight = 12,
         const double directCliqueCost = 0.5,
@@ -47,7 +47,8 @@ class SuperPixelModule : public SyncWrapperSystemModule {
 
 class SuperPixelVisualizationModule : public SystemModule {
    public:
-    SuperPixelVisualizationModule() : SystemModule("SuperPixelVisualization", {CARTSLAM_KEY_SUPERPIXELS}) {
+    SuperPixelVisualizationModule() : SystemModule("SuperPixelVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS));
         this->imageThread = ImageProvider::create("Super Pixels");
     };
 

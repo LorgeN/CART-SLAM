@@ -4,7 +4,7 @@
 
 #include <opencv2/cudafeatures2d.hpp>
 
-#include "cartslam.hpp"
+#include "module.hpp"
 #include "datasource.hpp"
 #include "utils/ui.hpp"
 
@@ -30,7 +30,9 @@ ImageFeatures detectOrbFeatures(const image_t image, cv::cuda::Stream& stream, l
 
 class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
    public:
-    ImageFeatureDetectorModule(FeatureDetector detector) : SyncWrapperSystemModule("ImageFeatureDetector"), detector(detector){};
+    ImageFeatureDetectorModule(FeatureDetector detector) : SyncWrapperSystemModule("ImageFeatureDetector"), detector(detector) {
+        this->providesData.push_back(CARTSLAM_KEY_FEATURES);
+    };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
@@ -40,7 +42,8 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
 
 class ImageFeatureVisualizationModule : public SystemModule {
    public:
-    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization", {CARTSLAM_KEY_FEATURES}) {
+    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_FEATURES));
         this->imageThread = ImageProvider::create("Features");
     };
 

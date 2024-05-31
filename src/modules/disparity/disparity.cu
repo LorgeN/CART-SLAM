@@ -2,6 +2,7 @@
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/disparity/interpolation.cuh"
 #include "sources/zed.hpp"

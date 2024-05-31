@@ -1,5 +1,6 @@
 #include "modules/optflow.hpp"
 
+#include "cartslam.hpp"
 #include "utils/colors.hpp"
 #include "utils/modules.hpp"
 

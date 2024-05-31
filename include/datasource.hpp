@@ -47,7 +47,7 @@ class StereoDataElement : public DataElement {
 image_t getReferenceImage(boost::shared_ptr<DataElement> element);
 
 template <typename T>
-class DataElementVisitor {
+class DataElementVisitor { 
    public:
     virtual T visitStereo(boost::shared_ptr<StereoDataElement> element) {
         throw std::runtime_error("Not implemented");

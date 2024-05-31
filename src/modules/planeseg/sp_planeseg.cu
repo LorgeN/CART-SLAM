@@ -1,5 +1,6 @@
 #include <opencv2/core/cuda_stream_accessor.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/planeseg.hpp"
 #include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
@@ -7,7 +8,6 @@
 #include "utils/modules.hpp"
 
 #define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)
-#define CARTSLAM_PLANE_TEMPORAL_DISTANCE (min((CARTSLAM_RUN_RETENTION - CARTSLAM_CONCURRENT_RUN_LIMIT) / 2, 3))
 
 #define THREADS_PER_BLOCK_X 32
 #define THREADS_PER_BLOCK_Y 32
@@ -157,7 +157,7 @@ __global__ void classifyPlanes(cv::cuda::PtrStepSz<cart::contour::label_t> label
             }
 
             cart::contour::label_t label = labels[INDEX(pixelX + j, pixelY + i, labels.step / sizeof(cart::contour::label_t))];
-            int maxVotes = 2 * sharedLabelData[LABEL_INDEX(label, cart::Plane::HORIZONTAL)];  // Assign a higher weight to horizontal votes
+            int maxVotes = sharedLabelData[LABEL_INDEX(label, cart::Plane::HORIZONTAL)];
             int max = cart::Plane::HORIZONTAL;
 
             int verticalVotes = sharedLabelData[LABEL_INDEX(label, cart::Plane::VERTICAL)];
@@ -214,15 +214,15 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
     if (this->useTemporalSmoothing && data.id > 1) {
         LOG4CXX_DEBUG(this->logger, "Using temporal smoothing");
 
-        cv_mat_ptr_t<uint8_t> previousPlanesHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE];
+        cv_mat_ptr_t<uint8_t> previousPlanesHost[this->temporalSmoothingDistance];
 
         auto optFlowCurr = data.getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
 
-        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[CARTSLAM_PLANE_TEMPORAL_DISTANCE] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
-                                                                                                   optFlowCurr->flow.step}};
+        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[this->temporalSmoothingDistance] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
+                                                                                                  optFlowCurr->flow.step}};
 
         // Copy previous planes to constant memory
-        for (int i = 1; i <= CARTSLAM_PLANE_TEMPORAL_DISTANCE; i++) {
+        for (int i = 1; i <= this->temporalSmoothingDistance; i++) {
             if (data.id - i <= 0) {
                 break;
             }
@@ -234,7 +234,7 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
             // Block until available
             boost::shared_ptr<cv::cuda::GpuMat> prev;
             try {
-                prev = relativeRun->getDataAsync<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED).get();
+                prev = relativeRun->getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES_UNSMOOTHED);
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(this->logger, "Could not get previous planes from " << relativeRun->id << ": " << e.what());
                 break;
@@ -249,13 +249,13 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
             previousPlaneCount++;
 
-            if (relativeRun->id > 1 && previousPlaneCount < CARTSLAM_PLANE_TEMPORAL_DISTANCE) {
+            if (relativeRun->id > 1 && previousPlaneCount < this->temporalSmoothingDistance) {
                 LOG4CXX_DEBUG(this->logger, "Getting optical flow from " << relativeRun->id);
 
                 boost::shared_ptr<image_optical_flow_t> optFlow;
 
                 try {
-                    optFlow = relativeRun->getDataAsync<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW).get();
+                    optFlow = relativeRun->getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
                 } catch (const std::exception& e) {
                     LOG4CXX_ERROR(this->logger, "Could not get optical flow from " << relativeRun->id << ": " << e.what());
                     break;

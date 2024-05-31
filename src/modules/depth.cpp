@@ -2,6 +2,7 @@
 
 #include <opencv2/cudastereo.hpp>
 
+#include "cartslam.hpp"
 #include "utils/modules.hpp"
 
 namespace cart {

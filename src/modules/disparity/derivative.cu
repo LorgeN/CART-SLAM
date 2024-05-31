@@ -1,6 +1,7 @@
 #include <opencv2/core/cuda_stream_accessor.hpp>
 #include <opencv2/cudaimgproc.hpp>
 
+#include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "utils/colors.hpp"
 #include "utils/cuda.cuh"
@@ -16,10 +17,12 @@
 #define X_BATCH 4
 #define Y_BATCH 4
 
-// Pad the shared memory by 1 in each direction
-#define SHARED_SIZE ((2 + X_BATCH * THREADS_PER_BLOCK_X) * (2 + Y_BATCH * THREADS_PER_BLOCK_Y))
+#define DERIV_OFFSET 2
 
-#define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, 1, 1, sharedRowStep)
+// Pad the shared memory by 1 in each direction
+#define SHARED_SIZE ((DERIV_OFFSET * 2 + X_BATCH * THREADS_PER_BLOCK_X) * (DERIV_OFFSET * 2 + Y_BATCH * THREADS_PER_BLOCK_Y))
+
+#define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, DERIV_OFFSET, DERIV_OFFSET, sharedRowStep)
 
 __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity,
                                                 cv::cuda::PtrStepSz<cart::derivative_t> output,
@@ -44,7 +47,7 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
     size_t outputRowStep = output.step / sizeof(cart::derivative_t);
     size_t sharedRowStep = X_BATCH * blockDim.x;
 
-    cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(sharedDisparity, disparity, 1, 1);
+    cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(sharedDisparity, disparity, DERIV_OFFSET, DERIV_OFFSET);
 
     __syncthreads();
 
@@ -56,18 +59,18 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
             }
 
             cart::derivative_t verticalDerivative =
-                sharedDisparity[LOCAL_INDEX(j, i + 1)] -
-                sharedDisparity[LOCAL_INDEX(j, i - 1)];
+                sharedDisparity[LOCAL_INDEX(j, i + DERIV_OFFSET)] -
+                sharedDisparity[LOCAL_INDEX(j, i - DERIV_OFFSET)];
 
             cart::derivative_t horizontalDerivative =
-                sharedDisparity[LOCAL_INDEX(j + 1, i)] -
-                sharedDisparity[LOCAL_INDEX(j - 1, i)];
+                sharedDisparity[LOCAL_INDEX(j + DERIV_OFFSET, i)] -
+                sharedDisparity[LOCAL_INDEX(j - DERIV_OFFSET, i)];
 
-            bool verticalDerivativeValid = sharedDisparity[LOCAL_INDEX(j, i - 1)] != CARTSLAM_DISPARITY_INVALID &&
-                                           sharedDisparity[LOCAL_INDEX(j, i + 1)] != CARTSLAM_DISPARITY_INVALID;
+            bool verticalDerivativeValid = sharedDisparity[LOCAL_INDEX(j, i - DERIV_OFFSET)] != CARTSLAM_DISPARITY_INVALID &&
+                                           sharedDisparity[LOCAL_INDEX(j, i + DERIV_OFFSET)] != CARTSLAM_DISPARITY_INVALID;
 
-            bool horizontalDerivativeValid = sharedDisparity[LOCAL_INDEX(j - 1, i)] != CARTSLAM_DISPARITY_INVALID &&
-                                             sharedDisparity[LOCAL_INDEX(j + 1, i)] != CARTSLAM_DISPARITY_INVALID;
+            bool horizontalDerivativeValid = sharedDisparity[LOCAL_INDEX(j - DERIV_OFFSET, i)] != CARTSLAM_DISPARITY_INVALID &&
+                                             sharedDisparity[LOCAL_INDEX(j + DERIV_OFFSET, i)] != CARTSLAM_DISPARITY_INVALID;
 
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 0, outputRowStep)] = verticalDerivativeValid ? verticalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 1, outputRowStep)] = horizontalDerivativeValid ? horizontalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
