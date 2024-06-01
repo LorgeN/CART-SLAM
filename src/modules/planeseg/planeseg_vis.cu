@@ -86,13 +86,16 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
             }
 
             // Normalize depth to 0 - rows (height) of the output image
-            size_t row = output.rows - static_cast<size_t>(round((z / maxDepth) * output.rows)) - 1;
+            int row = output.rows - static_cast<int>(round((z / maxDepth) * output.rows)) - 1;
 
-            // Normalize x to 0 - cols (width) of the output image. Assume a range of -10 to 10
-            size_t column = static_cast<size_t>(round(((x + 10.0f) / 20.0f) * output.cols));
+            // Normalize x to 0 - cols (width) of the output image. Assume a range of -20 to 20
+            int column = static_cast<int>(round(((x + 20.0f) / 40.0f) * output.cols));
 
-            // Set row value in same column to 0 to highlight any spot that has a vertical plane
-            output[INDEX(column, row, outputRowStep)] = 0;
+            // This will result in race conditions, but it's fine for visualization. The idea is that
+            // taller vertical planes will be more visible.
+            uint8_t curr = output[INDEX(column, row, outputRowStep)];
+            curr -= min(curr, 16);
+            output[INDEX(column, row, outputRowStep)] = curr;
         }
     }
 }
@@ -209,7 +212,7 @@ bool PlaneSegmentationBEVVisualizationModule::updateImage(System& system, System
         return false;
     }
 
-    cv::cuda::GpuMat output(600, 600, CV_8UC1);
+    cv::cuda::GpuMat output(300, 600, CV_8UC1);
 
     cv::cuda::Stream cvStream;
     cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
