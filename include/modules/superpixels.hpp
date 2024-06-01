@@ -4,6 +4,7 @@
 
 #include "datasource.hpp"
 #include "module.hpp"
+#include "visualization.hpp"
 #include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
 #include "utils/ui.hpp"
 
@@ -45,16 +46,12 @@ class SuperPixelModule : public SyncWrapperSystemModule {
     contour::label_t maxLabelId;
 };
 
-class SuperPixelVisualizationModule : public SystemModule {
+class SuperPixelVisualizationModule : public VisualizationModule {
    public:
-    SuperPixelVisualizationModule() : SystemModule("SuperPixelVisualization") {
+    SuperPixelVisualizationModule() : VisualizationModule("SuperPixelVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS));
-        this->imageThread = ImageProvider::create("Super Pixels");
     };
 
-    boost::future<system_data_t> run(System &system, SystemRunData &data) override;
-
-   private:
-    boost::shared_ptr<ImageProvider> imageThread;
+    bool updateImage(System &system, SystemRunData &data, cv::Mat &image) override;
 };
 }  // namespace cart

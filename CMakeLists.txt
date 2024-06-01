@@ -31,6 +31,7 @@ add_executable( cart_slam
     src/modules/depth.cpp 
     src/modules/features.cpp 
     src/modules/optflow.cpp
+    src/modules/visualization.cpp
     src/modules/disparity/derivative.cu
     src/modules/disparity/disparity.cu
     src/modules/disparity/interpolation.cu

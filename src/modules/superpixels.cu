@@ -96,24 +96,15 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
         MODULE_MAKE_PAIR(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL, contour::label_t, this->maxLabelId));
 }
 
-boost::future<system_data_t> SuperPixelVisualizationModule::run(System &system, SystemRunData &data) {
-    auto promise = boost::make_shared<boost::promise<system_data_t>>();
+bool SuperPixelVisualizationModule::updateImage(System &system, SystemRunData &data, cv::Mat &image) {
+    auto labels = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_SUPERPIXELS);
 
-    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto labels = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_SUPERPIXELS);
+    cv::cuda::GpuMat imageGpu = getReferenceImage(data.dataElement);
+    cv::cuda::GpuMat boundaryOverlay;
 
-        cv::cuda::GpuMat image = getReferenceImage(data.dataElement);
-        cv::cuda::GpuMat boundaryOverlay;
+    cart::contour::computeBoundaryOverlay(this->logger, imageGpu, *labels, boundaryOverlay);
 
-        cart::contour::computeBoundaryOverlay(this->logger, image, *labels, boundaryOverlay);
-
-        cv::Mat boundaryOverlayCpu;
-        boundaryOverlay.download(boundaryOverlayCpu);
-
-        this->imageThread->setImageIfLater(boundaryOverlayCpu, data.id);
-        promise->set_value(MODULE_NO_RETURN_VALUE);
-    });
-
-    return promise->get_future();
+    boundaryOverlay.download(image);
+    return true;
 }
 }  // namespace cart

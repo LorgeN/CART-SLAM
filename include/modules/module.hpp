@@ -4,6 +4,7 @@
 
 #include "../logging.hpp"
 #include "../utils/data.hpp"
+#include "../utils/modules.hpp"
 
 namespace cart {
 

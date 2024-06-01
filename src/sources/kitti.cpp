@@ -131,8 +131,8 @@ const CameraIntrinsics KITTIDataSource::getCameraIntrinsics() const {
     CameraIntrinsics intrinsics;
     intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
 
-    intrinsics.Q.at<float>(0, 3) = -1 * leftCalibration.cx;
-    intrinsics.Q.at<float>(1, 3) = -1 * leftCalibration.cy;
+    intrinsics.Q.at<float>(0, 3) = -leftCalibration.cx;
+    intrinsics.Q.at<float>(1, 3) = -leftCalibration.cy;
     intrinsics.Q.at<float>(2, 2) = 0;
     intrinsics.Q.at<float>(2, 3) = leftCalibration.fx;
     intrinsics.Q.at<float>(3, 2) = -1.0 / leftCalibration.baseline;

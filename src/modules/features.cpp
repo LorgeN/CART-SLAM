@@ -24,35 +24,25 @@ void *ImageFeatureDetectorVisitor::visitStereo(boost::shared_ptr<StereoDataEleme
     return new std::pair<ImageFeatures, ImageFeatures>(leftFeatures, rightFeatures);
 }
 
-boost::future<system_data_t> ImageFeatureVisualizationModule::run(System &system, SystemRunData &data) {
-    auto promise = boost::make_shared<boost::promise<system_data_t>>();
+bool ImageFeatureVisualizationModule::updateImage(System &system, SystemRunData &data, cv::Mat &image) {
+    auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>(CARTSLAM_KEY_FEATURES);
 
-    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto features = data.getData<std::pair<ImageFeatures, ImageFeatures>>(CARTSLAM_KEY_FEATURES);
+    cv::cuda::Stream stream;
+    cv::Mat images[2];
 
-        cv::cuda::Stream stream;
-        cv::Mat images[2];
+    // TODO: Support for non-stereo images
+    boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
 
-        // TODO: Support for non-stereo images
-        boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
+    stereoData->left.download(images[0], stream);
+    stereoData->right.download(images[1], stream);
 
-        stereoData->left.download(images[0], stream);
-        stereoData->right.download(images[1], stream);
+    stream.waitForCompletion();
 
-        stream.waitForCompletion();
+    cv::drawKeypoints(images[0], features->first.keypoints, images[0]);
+    cv::drawKeypoints(images[1], features->second.keypoints, images[1]);
 
-        cv::drawKeypoints(images[0], features->first.keypoints, images[0]);
-        cv::drawKeypoints(images[1], features->second.keypoints, images[1]);
-
-        cv::Mat concatRes;
-        cv::hconcat(images[0], images[1], concatRes);
-
-        this->imageThread->setImageIfLater(concatRes, data.id);
-
-        promise->set_value(MODULE_NO_RETURN_VALUE);
-    });
-
-    return promise->get_future();
+    cv::hconcat(images[0], images[1], image);
+    return true;
 }
 
 ImageFeatures detectOrbFeatures(const image_t image, cv::cuda::Stream &stream, log4cxx::LoggerPtr logger) {

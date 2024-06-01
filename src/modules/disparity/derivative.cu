@@ -3,6 +3,7 @@
 
 #include "cartslam.hpp"
 #include "modules/disparity.hpp"
+#include "modules/module.hpp"
 #include "utils/colors.hpp"
 #include "utils/cuda.cuh"
 #include "utils/cuda_colors.cuh"
@@ -180,7 +181,7 @@ system_data_t ImageDisparityDerivativeModule::runInternal(System& system, System
         MODULE_MAKE_PAIR(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM, cv::cuda::GpuMat, boost::move(histogramOutput)));
 }
 
-system_data_t ImageDisparityDerivativeVisualizationModule::runInternal(System& system, SystemRunData& data) {
+bool ImageDisparityDerivativeVisualizationModule::updateImage(System& system, SystemRunData& data, cv::Mat& output) {
     auto derivatives = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
 
     cv::Mat cpuDerivatives;
@@ -243,10 +244,7 @@ system_data_t ImageDisparityDerivativeVisualizationModule::runInternal(System& s
 
     cvStream.waitForCompletion();
 
-    cv::Mat output;
     cv::vconcat(image, derivativeImage, output);
-
-    this->imageThread->setImageIfLater(output, data.id);
-    return MODULE_NO_RETURN_VALUE;
+    return true;
 }
 }  // namespace cart

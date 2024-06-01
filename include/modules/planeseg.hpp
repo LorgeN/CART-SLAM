@@ -6,6 +6,7 @@
 #include <opencv2/ml.hpp>
 
 #include "module.hpp"
+#include "modules/depth.hpp"
 #include "modules/disparity.hpp"
 #include "modules/optflow.hpp"
 #include "modules/superpixels.hpp"
@@ -231,5 +232,15 @@ class DisparityPlaneSegmentationVisualizationModule : public SystemModule {
 
     boost::shared_ptr<ImageProvider> imageThread;
     boost::shared_ptr<ImageProvider> histThread;
+};
+
+class PlaneSegmentationBEVVisualizationModule : public VisualizationModule {
+   public:
+    PlaneSegmentationBEVVisualizationModule() : VisualizationModule("PlaneSegmentationBEVVisualization") {
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_PLANES));
+        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DEPTH));
+    };
+
+    bool updateImage(System& system, SystemRunData& data, cv::Mat& image) override;
 };
 }  // namespace cart

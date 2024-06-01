@@ -216,10 +216,10 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
         cv_mat_ptr_t<uint8_t> previousPlanesHost[this->temporalSmoothingDistance];
 
-        auto optFlowCurr = data.getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
+        auto optFlowCurr = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_OPTFLOW);
 
-        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[this->temporalSmoothingDistance] = {{static_cast<optical_flow_t*>(optFlowCurr->flow.cudaPtr()),
-                                                                                                  optFlowCurr->flow.step}};
+        cv_mat_ptr_t<optical_flow_t> previousOpticalFlowHost[this->temporalSmoothingDistance] = {{static_cast<optical_flow_t*>(optFlowCurr->cudaPtr()),
+                                                                                                  optFlowCurr->step}};
 
         // Copy previous planes to constant memory
         for (int i = 1; i <= this->temporalSmoothingDistance; i++) {
@@ -252,18 +252,18 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
             if (relativeRun->id > 1 && previousPlaneCount < this->temporalSmoothingDistance) {
                 LOG4CXX_DEBUG(this->logger, "Getting optical flow from " << relativeRun->id);
 
-                boost::shared_ptr<image_optical_flow_t> optFlow;
+                boost::shared_ptr<cv::cuda::GpuMat> optFlow;
 
                 try {
-                    optFlow = relativeRun->getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
+                    optFlow = relativeRun->getData<cv::cuda::GpuMat>(CARTSLAM_KEY_OPTFLOW);
                 } catch (const std::exception& e) {
                     LOG4CXX_ERROR(this->logger, "Could not get optical flow from " << relativeRun->id << ": " << e.what());
                     break;
                 }
 
                 previousOpticalFlowHost[previousPlaneCount] = {
-                    static_cast<optical_flow_t*>(optFlow->flow.cudaPtr()),
-                    optFlow->flow.step};
+                    static_cast<optical_flow_t*>(optFlow->cudaPtr()),
+                    optFlow->step};
             }
         }
 

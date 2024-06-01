@@ -115,36 +115,27 @@ system_data_t ZEDImageDisparityModule::runInternal(System& system, SystemRunData
 }
 #endif  // CARTSLAM_ZED
 
-boost::future<system_data_t> ImageDisparityVisualizationModule::run(System& system, SystemRunData& data) {
-    auto promise = boost::make_shared<boost::promise<system_data_t>>();
+bool ImageDisparityVisualizationModule::updateImage(System& system, SystemRunData& data, cv::Mat& output) {
+    auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
 
-    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        auto disparity = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
+    cv::cuda::Stream stream;
+    cv::Mat image, disparityData, disparityImage;
 
-        cv::cuda::Stream stream;
-        cv::Mat image, disparityData, disparityImage;
+    boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
 
-        boost::shared_ptr<cart::StereoDataElement> stereoData = boost::static_pointer_cast<cart::StereoDataElement>(data.dataElement);
+    stereoData->left.download(image, stream);
+    disparity->download(disparityData, stream);
 
-        stereoData->left.download(image, stream);
-        disparity->download(disparityData, stream);
+    stream.waitForCompletion();
 
-        stream.waitForCompletion();
-
-        cv::ximgproc::getDisparityVis(disparityData, disparityImage);
+    cv::ximgproc::getDisparityVis(disparityData, disparityImage);
 
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-        cv::cvtColor(disparityImage, disparityImage, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(disparityImage, disparityImage, cv::COLOR_GRAY2BGR);
 #endif
 
-        cv::Mat concatRes;
-        cv::vconcat(image, disparityImage, concatRes);
-
-        this->imageThread->setImageIfLater(concatRes, data.id);
-
-        promise->set_value(MODULE_NO_RETURN_VALUE);
-    });
-
-    return promise->get_future();
+    cv::vconcat(image, disparityImage, output);
+    return true;
 }
+
 }  // namespace cart

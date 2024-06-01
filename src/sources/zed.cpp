@@ -38,17 +38,21 @@ ZEDDataSource::~ZEDDataSource() {
 const CameraIntrinsics ZEDDataSource::getCameraIntrinsics() const {
     auto info = this->camera->getCameraInformation().camera_configuration.calibration_parameters;
 
+    // Find scaling factor
+    float scalingFactorX = CARTSLAM_IMAGE_RES_X / static_cast<float>(info.left_cam.image_size.width);
+    float scalingFactorY = CARTSLAM_IMAGE_RES_Y / static_cast<float>(info.left_cam.image_size.height);
+
     CameraIntrinsics intrinsics;
     intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
 
-    float left_cx = info.left_cam.cx;
-    float left_cy = info.left_cam.cy;
-    float left_fx = info.left_cam.fx;
-    float right_cx = info.right_cam.cx;
-    float baseline = info.getCameraBaseline();
-
-    intrinsics.Q.at<float>(0, 3) = -1 * left_cx;
-    intrinsics.Q.at<float>(1, 3) = -1 * left_cy;
+    float left_cx = info.left_cam.cx * scalingFactorX;
+    float left_cy = info.left_cam.cy * scalingFactorY;
+    float left_fx = info.left_cam.fx * scalingFactorX;
+    float right_cx = info.right_cam.cx * scalingFactorX;
+    float baseline = -info.getCameraBaseline();
+ 
+    intrinsics.Q.at<float>(0, 3) = -left_cx;
+    intrinsics.Q.at<float>(1, 3) = -left_cy;
     intrinsics.Q.at<float>(2, 2) = 0;
     intrinsics.Q.at<float>(2, 3) = left_fx;
     intrinsics.Q.at<float>(3, 2) = -1.0 / baseline;

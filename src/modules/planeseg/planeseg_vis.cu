@@ -55,6 +55,48 @@ __global__ void overlayPlanes(cv::cuda::PtrStepSz<uint8_t> image, cv::cuda::PtrS
     }
 }
 
+__global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::PtrStepSz<float> depth, cv::cuda::PtrStepSz<uint8_t> output, float maxDepth) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int pixelX = x * X_BATCH;
+    int pixelY = y * Y_BATCH;
+
+    size_t outputRowStep = output.step / sizeof(uint8_t);
+    size_t depthRowStep = depth.step / sizeof(float);
+    size_t planesRowStep = planes.step / sizeof(uint8_t);
+
+    for (int i = 0; i < Y_BATCH; i++) {
+        for (int j = 0; j < X_BATCH; j++) {
+            if (pixelX + j >= depth.cols || pixelY + i >= depth.rows) {
+                continue;
+            }
+
+            uint8_t plane = planes[INDEX(pixelX + j, pixelY + i, planesRowStep)];
+
+            if (plane != cart::Plane::VERTICAL) {
+                continue;
+            }
+
+            // depth is XYZ
+            float x = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 0, depthRowStep)];
+            float z = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 2, depthRowStep)];
+            if (z > maxDepth || z < 0.0f) {
+                continue;
+            }
+
+            // Normalize depth to 0 - rows (height) of the output image
+            size_t row = output.rows - static_cast<size_t>(round((z / maxDepth) * output.rows)) - 1;
+
+            // Normalize x to 0 - cols (width) of the output image. Assume a range of -10 to 10
+            size_t column = static_cast<size_t>(round(((x + 10.0f) / 20.0f) * output.cols));
+
+            // Set row value in same column to 0 to highlight any spot that has a vertical plane
+            output[INDEX(column, row, outputRowStep)] = 0;
+        }
+    }
+}
+
 namespace cart {
 
 boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(System& system, SystemRunData& data) {
@@ -157,5 +199,31 @@ boost::future<system_data_t> DisparityPlaneSegmentationVisualizationModule::run(
     });
 
     return promise->get_future();
+}
+
+bool PlaneSegmentationBEVVisualizationModule::updateImage(System& system, SystemRunData& data, cv::Mat& image) {
+    auto planes = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_PLANES);
+    auto depth = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DEPTH);
+
+    if (planes->empty() || depth->empty()) {
+        return false;
+    }
+
+    cv::cuda::GpuMat output(600, 600, CV_8UC1);
+
+    cv::cuda::Stream cvStream;
+    cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
+
+    dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
+    dim3 numBlocks((planes->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
+                   (planes->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
+
+    output.setTo(255, cvStream);
+    paintBEVPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(*planes, *depth, output, 25.0);
+
+    output.download(image, cvStream);
+
+    cvStream.waitForCompletion();
+    return true;
 }
 }  // namespace cart

@@ -4,9 +4,10 @@
 
 #include <opencv2/cudafeatures2d.hpp>
 
-#include "module.hpp"
 #include "datasource.hpp"
+#include "module.hpp"
 #include "utils/ui.hpp"
+#include "visualization.hpp"
 
 #define CARTSLAM_OPTION_KEYPOINTS 5000
 
@@ -40,17 +41,13 @@ class ImageFeatureDetectorModule : public SyncWrapperSystemModule {
     const FeatureDetector detector;
 };
 
-class ImageFeatureVisualizationModule : public SystemModule {
+class ImageFeatureVisualizationModule : public VisualizationModule {
    public:
-    ImageFeatureVisualizationModule() : SystemModule("ImageFeatureVisualization") {
+    ImageFeatureVisualizationModule() : VisualizationModule("ImageFeatureVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_FEATURES));
-        this->imageThread = ImageProvider::create("Features");
     };
 
-    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
-
-   private:
-    boost::shared_ptr<ImageProvider> imageThread;
+    bool updateImage(System& system, SystemRunData& data, cv::Mat& image) override;
 };
 
 class ImageFeatureDetectorVisitor : public DataElementVisitor<void*> {

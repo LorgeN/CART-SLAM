@@ -50,13 +50,19 @@ void drawOpticalFlowInternal(const cv::Mat_<float> &flowx, const cv::Mat_<float>
 
 namespace cart {
 
+ImageOpticalFlowModule::ImageOpticalFlowModule() : SyncWrapperSystemModule("ImageOpticalFlow") {
+    this->providesData.push_back(CARTSLAM_KEY_OPTFLOW);
+
+    this->opticalFlow = createOpticalFlow(this->stream);
+}
+
 cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &stream) {
     return cv::cuda::NvidiaOpticalFlow_2_0::create(
         cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y),
-        cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_PERF_LEVEL_SLOW,
+        cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_PERF_LEVEL_MEDIUM,
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_OUTPUT_VECTOR_GRID_SIZE_1,
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_HINT_VECTOR_GRID_SIZE_1,
-        false,
+        true,
         false,
         false,
         0,
@@ -64,10 +70,10 @@ cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &str
         stream);
 }
 
-cv::Mat drawOpticalFlow(const image_optical_flow_t &imageFlow, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow, cv::Mat &cpuFlow, cv::cuda::Stream &stream) {
+cv::Mat drawOpticalFlow(const cv::cuda::GpuMat &imageFlow, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow, cv::Mat &cpuFlow, cv::cuda::Stream &stream) {
     cv::cuda::GpuMat floatFlow;
 
-    opticalFlow->convertToFloat(imageFlow.flow, floatFlow);
+    opticalFlow->convertToFloat(imageFlow, floatFlow);
 
     floatFlow.download(cpuFlow, stream);
 
@@ -86,15 +92,11 @@ cv::Mat drawOpticalFlow(const image_optical_flow_t &imageFlow, cv::Ptr<cv::cuda:
     return flowImage;
 }
 
-image_optical_flow_t ImageOpticalFlowModule::detectOpticalFlow(
-    const image_t input,
-    const image_t reference,
-    cv::InputArray hint,
-    cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow,
-    cv::cuda::Stream &stream) {
-    cv::cuda::GpuMat flow;
-    cv::cuda::GpuMat cost;
-
+void ImageOpticalFlowModule::detectOpticalFlow(const image_t input,
+                                               const image_t reference,
+                                               cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow,
+                                               cv::cuda::Stream &stream,
+                                               cv::cuda::GpuMat &flow) {
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     cv::cuda::GpuMat inputProc;
     cv::cuda::GpuMat referenceProc;
@@ -106,13 +108,12 @@ image_optical_flow_t ImageOpticalFlowModule::detectOpticalFlow(
     {
         boost::unique_lock<boost::shared_mutex> lock(this->flowMutex);
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
-        opticalFlow->calc(inputProc, referenceProc, flow, cv::cuda::Stream::Null(), hint, cost);
+        opticalFlow->calc(inputProc, referenceProc, flow);
 #else
-        opticalFlow->calc(input, reference, flow, cv::cuda::Stream::Null(), hint, cost);
+        opticalFlow->calc(input, reference, flow);
 #endif
+        stream.waitForCompletion();
     }
-
-    return {flow, cost};
 }
 
 system_data_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData &data) {
@@ -120,75 +121,57 @@ system_data_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData 
         return MODULE_RETURN(CARTSLAM_KEY_OPTFLOW, boost::shared_ptr<void>());
     }
 
-    cv::cuda::Stream stream;
-    cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> flow = createOpticalFlow(stream);
-
     boost::shared_ptr<SystemRunData> previousRun = data.getRelativeRun(-1);
 
     auto referenceCurrent = cart::getReferenceImage(data.dataElement);
     auto referencePrevious = cart::getReferenceImage(previousRun->dataElement);
 
-    image_optical_flow_t result;
+    cv::cuda::GpuMat result;
+    this->detectOpticalFlow(referenceCurrent, referencePrevious, this->opticalFlow, this->stream, result);
+    this->stream.waitForCompletion();
 
-    if (previousRun->hasData(CARTSLAM_KEY_OPTFLOW)) {
-        auto previousFlow = previousRun->getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
-        result = this->detectOpticalFlow(referenceCurrent, referencePrevious, previousFlow->flow, flow, stream);
-    } else {
-        result = this->detectOpticalFlow(referenceCurrent, referencePrevious, cv::noArray(), flow, stream);
-    }
-
-    return MODULE_RETURN_SHARED(CARTSLAM_KEY_OPTFLOW, image_optical_flow_t, boost::move(result));
+    return MODULE_RETURN_SHARED(CARTSLAM_KEY_OPTFLOW, cv::cuda::GpuMat, boost::move(result));
 }
 
-boost::future<system_data_t> ImageOpticalFlowVisualizationModule::run(System &system, SystemRunData &data) {
-    auto promise = boost::make_shared<boost::promise<system_data_t>>();
+bool ImageOpticalFlowVisualizationModule::updateImage(System &system, SystemRunData &data, cv::Mat &image) {
+    if (data.id <= 1) {  // First run, no previous data
+        LOG4CXX_DEBUG(this->logger, "No previous data, skipping optical flow visualization");
+        return false;
+    }
 
-    boost::asio::post(system.getThreadPool(), [this, promise, &system, &data]() {
-        if (data.id <= 1) {  // First run, no previous data
-            promise->set_value(MODULE_NO_RETURN_VALUE);
-            LOG4CXX_DEBUG(this->logger, "No previous data, skipping optical flow visualization");
-            return;
-        }
+    boost::shared_ptr<cv::cuda::GpuMat> flow = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_OPTFLOW);
 
-        boost::shared_ptr<image_optical_flow_t> flow = data.getData<image_optical_flow_t>(CARTSLAM_KEY_OPTFLOW);
+    cv::cuda::Stream stream;
+    cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(stream);
 
-        cv::cuda::Stream stream;
-        cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(stream);
+    cv::Mat cpuFlow;
 
-        cv::Mat cpuFlow;
+    cv::Mat flowImageLeft = drawOpticalFlow(*flow, opticalFlow, cpuFlow, stream);
 
-        cv::Mat flowImageLeft = drawOpticalFlow(*flow, opticalFlow, cpuFlow, stream);
+    cv::Mat flowX, flowY, flowImage;
+    cv::Mat flowPlanes[2] = {flowX, flowY};
 
-        cv::Mat flowX, flowY, flowImage;
-        cv::Mat flowPlanes[2] = {flowX, flowY};
+    cv::split(cpuFlow, flowPlanes);
+    flowX = flowPlanes[0];
+    flowY = flowPlanes[1];
 
-        cv::split(cpuFlow, flowPlanes);
-        flowX = flowPlanes[0];
-        flowY = flowPlanes[1];
+    cv::Mat images[2];
+    getReferenceImage(data.dataElement).download(images[0], stream);
+    getReferenceImage(data.getRelativeRun(-1)->dataElement).download(images[1], stream);
 
-        cv::Mat images[2];
-        getReferenceImage(data.dataElement).download(images[0], stream);
-        getReferenceImage(data.getRelativeRun(-1)->dataElement).download(images[1], stream);
+    cv::vconcat(images[0], images[1], image);
+    cv::vconcat(image, flowImageLeft, image);
 
-        cv::Mat resImage;
+    // Draw arrows on the image
 
-        cv::vconcat(images[0], images[1], resImage);
-        cv::vconcat(resImage, flowImageLeft, resImage);
+    cv::Point2i prevImageOffset = cv::Point2i(0, images[0].rows);
 
-        // Draw arrows on the image
+    for (const auto &point : this->visualizationPoints) {
+        cv::Point2f flowPoint(flowX.at<float>(point), flowY.at<float>(point));
+        cv::arrowedLine(image, point + prevImageOffset, point - cv::Point2i(flowPoint.x, flowPoint.y), cv::Scalar(0, 255, 0), 1, cv::LINE_AA, 0, 0.05);
+    }
 
-        cv::Point2i prevImageOffset = cv::Point2i(0, images[0].rows);
-
-        for (const auto &point : this->visualizationPoints) {
-            cv::Point2f flowPoint(flowX.at<float>(point), flowY.at<float>(point));
-            cv::arrowedLine(resImage, point + prevImageOffset, point - cv::Point2i(flowPoint.x, flowPoint.y), cv::Scalar(0, 255, 0), 1, cv::LINE_AA, 0, 0.05);
-        }
-
-        this->imageThread->setImageIfLater(resImage, data.id);
-        promise->set_value(MODULE_NO_RETURN_VALUE);
-    });
-
-    return promise->get_future();
+    return true;
 }
 
 }  // namespace cart

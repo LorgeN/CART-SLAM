@@ -2,6 +2,7 @@
 
 #include "module.hpp"
 #include "disparity.hpp"
+#include "visualization.hpp"
 
 #define CARTSLAM_KEY_DEPTH "depth"
 
@@ -17,17 +18,13 @@ class DepthModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System& system, SystemRunData& data) override;
 };
 
-class DepthVisualizationModule : public SystemModule {
+class DepthVisualizationModule : public VisualizationModule {
    public:
-    DepthVisualizationModule() : SystemModule("DepthVisualization") {
+    DepthVisualizationModule() : VisualizationModule("DepthVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DEPTH));
-        this->imageThread = ImageProvider::create("Depth");
     };
 
-    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
-
-   private:
-    boost::shared_ptr<ImageProvider> imageThread;
+    bool updateImage(System& system, SystemRunData& data, cv::Mat &image) override;
 };
 
 }  // namespace cart

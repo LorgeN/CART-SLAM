@@ -4,9 +4,10 @@
 
 #include <opencv2/cudastereo.hpp>
 
-#include "module.hpp"
 #include "datasource.hpp"
+#include "module.hpp"
 #include "modules/disparity/interpolation.cuh"
+#include "modules/visualization.hpp"
 #include "utils/ui.hpp"
 
 #define CARTSLAM_KEY_DISPARITY "disparity"
@@ -58,17 +59,13 @@ class ZEDImageDisparityModule : public SyncWrapperSystemModule {
 };
 #endif  // CARTSLAM_ZED
 
-class ImageDisparityVisualizationModule : public SystemModule {
+class ImageDisparityVisualizationModule : public VisualizationModule {
    public:
-    ImageDisparityVisualizationModule() : SystemModule("ImageDisparityVisualization") {
+    ImageDisparityVisualizationModule() : VisualizationModule("ImageDisparityVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY));
-        this->imageThread = ImageProvider::create("Disparity");
     };
 
-    boost::future<system_data_t> run(System& system, SystemRunData& data) override;
-
-   private:
-    boost::shared_ptr<ImageProvider> imageThread;
+    bool updateImage(System& system, SystemRunData& data, cv::Mat& image) override;
 };
 
 class ImageDisparityDerivativeModule : public SyncWrapperSystemModule {
@@ -82,16 +79,12 @@ class ImageDisparityDerivativeModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System& system, SystemRunData& data) override;
 };
 
-class ImageDisparityDerivativeVisualizationModule : public SyncWrapperSystemModule {
+class ImageDisparityDerivativeVisualizationModule : public VisualizationModule {
    public:
-    ImageDisparityDerivativeVisualizationModule() : SyncWrapperSystemModule("ImageDisparityDerivativeVisualization") {
+    ImageDisparityDerivativeVisualizationModule() : VisualizationModule("ImageDisparityDerivativeVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE));
-        this->imageThread = ImageProvider::create("Disparity Derivative");
     };
 
-    system_data_t runInternal(System& system, SystemRunData& data) override;
-
-   private:
-    boost::shared_ptr<ImageProvider> imageThread;
+    bool updateImage(System& system, SystemRunData& data, cv::Mat& image) override;
 };
 }  // namespace cart
