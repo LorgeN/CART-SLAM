@@ -37,6 +37,10 @@ struct __align__(16) cv_mat_ptr_t {
     size_t step;
 };
 
+void copyColorWheelToDevice(cudaStream_t &stream);
+
+__device__ void assignColor(float fx, float fy, uint8_t *pix);
+
 template <typename T, int XBatch, int YBatch, bool Interpolate = true>
 __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadding, int xPadding) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;

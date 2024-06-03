@@ -16,19 +16,24 @@
 #include "timing.hpp"
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
+    if (argc <= 2) {
         std::cout << "Please provide an image file to process." << std::endl;
         return 1;
     }
 
     cart::configureLogging("app.log");
 
+    int kittiSeq = 0;
+    if (argc >= 3) {
+        kittiSeq = std::stoi(argv[2]);
+    }
+
     //auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
-    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], 0);
+    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], kittiSeq);
     auto system = boost::make_shared<cart::System>(dataSource);
 
     system->addModule<cart::SuperPixelModule>();
-    // system->addModule<cart::SuperPixelVisualizationModule>();
+    system->addModule<cart::SuperPixelVisualizationModule>();
 
     system->addModule<cart::ImageOpticalFlowModule>();
     // system->addModule<cart::ImageOpticalFlowVisualizationModule>();

@@ -49,6 +49,8 @@ add_executable( cart_slam
     src/utils/colors.cpp
     src/utils/peaks.cpp
     src/utils/cuda.cu
+    src/utils/plane.cpp
+    src/utils/random.cpp
 )
 
 # Tells NVCC to generate device code for linking later

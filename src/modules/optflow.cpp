@@ -128,7 +128,6 @@ system_data_t ImageOpticalFlowModule::runInternal(System &system, SystemRunData 
 
     cv::cuda::GpuMat result;
     this->detectOpticalFlow(referenceCurrent, referencePrevious, this->opticalFlow, this->stream, result);
-    this->stream.waitForCompletion();
 
     return MODULE_RETURN_SHARED(CARTSLAM_KEY_OPTFLOW, cv::cuda::GpuMat, boost::move(result));
 }

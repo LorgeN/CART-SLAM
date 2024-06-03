@@ -104,7 +104,7 @@ __global__ void performSuperPixelClassifications(cv::cuda::PtrStepSz<cart::deriv
 
                 // Find the plane with the most votes, or unknown if there are no votes
                 plane = votes[cart::Plane::HORIZONTAL] > votes[cart::Plane::VERTICAL] ? cart::Plane::HORIZONTAL : cart::Plane::VERTICAL;
-                if (votes[plane] == 0) {
+                if (votes[plane] < votes[cart::Plane::UNKNOWN]) {
                     plane = cart::Plane::UNKNOWN;
                 }
             }

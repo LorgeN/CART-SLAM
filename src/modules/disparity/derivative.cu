@@ -6,7 +6,6 @@
 #include "modules/module.hpp"
 #include "utils/colors.hpp"
 #include "utils/cuda.cuh"
-#include "utils/cuda_colors.cuh"
 #include "utils/modules.hpp"
 
 #define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)

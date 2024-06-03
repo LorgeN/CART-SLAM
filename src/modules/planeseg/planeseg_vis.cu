@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 
 #include <opencv2/core/cuda_stream_accessor.hpp>
+#include <opencv2/cudawarping.hpp>
 #include <opencv2/ximgproc/disparity_filter.hpp>
 
 #include "cartslam.hpp"
@@ -81,20 +82,20 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
             // depth is XYZ
             float x = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 0, depthRowStep)];
             float z = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 2, depthRowStep)];
-            if (z > maxDepth || z < 0.0f) {
+            if (z > maxDepth || z < 0.0f || x < -10.0f || x > 10.0f) {
                 continue;
             }
 
             // Normalize depth to 0 - rows (height) of the output image
             int row = output.rows - static_cast<int>(round((z / maxDepth) * output.rows)) - 1;
 
-            // Normalize x to 0 - cols (width) of the output image. Assume a range of -20 to 20
-            int column = static_cast<int>(round(((x + 20.0f) / 40.0f) * output.cols));
+            // Normalize x to 0 - cols (width) of the output image. Assume a range of -10 to 10
+            int column = static_cast<int>(round(((x + 10.0f) / 20.0f) * output.cols));
 
             // This will result in race conditions, but it's fine for visualization. The idea is that
             // taller vertical planes will be more visible.
             uint8_t curr = output[INDEX(column, row, outputRowStep)];
-            curr -= min(curr, 16);
+            curr -= min(curr, 2);
             output[INDEX(column, row, outputRowStep)] = curr;
         }
     }
@@ -223,6 +224,7 @@ bool PlaneSegmentationBEVVisualizationModule::updateImage(System& system, System
 
     output.setTo(255, cvStream);
     paintBEVPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(*planes, *depth, output, 25.0);
+    cv::cuda::resize(output, output, cv::Size(1200, 600), 0, 0, cv::INTER_NEAREST, cvStream);
 
     output.download(image, cvStream);
 

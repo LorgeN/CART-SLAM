@@ -385,8 +385,8 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     unsigned int* borderCount;
     label_t* newLabels;
 
-    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
-    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&borderPixels, sizeof(CRPoint) * (this->labelImage.cols * this->labelImage.rows) / 2, stream));
+    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&newLabels, sizeof(label_t) * (this->labelImage.cols * this->labelImage.rows), stream));
+    CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&borderPixels, sizeof(CRPoint) * (this->labelImage.cols * this->labelImage.rows), stream));
     CUDA_SAFE_CALL(this->logger, cudaMallocAsync(&borderCount, sizeof(unsigned int), stream));
 
     CRSettings settings = {

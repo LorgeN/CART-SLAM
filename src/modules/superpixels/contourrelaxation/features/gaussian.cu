@@ -170,7 +170,7 @@ __device__ double CUDAGaussianFeature<TData, VChannels, Type>::calculateCost(con
         }
     }
 
-    return featureCost;
+    return featureCost / static_cast<double>(VChannels);
 }
 
 template <typename TData, size_t VChannels, DataType Type>
