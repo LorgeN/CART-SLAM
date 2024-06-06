@@ -4,10 +4,6 @@
 #include <opencv2/cudawarping.hpp>
 
 void processImage(cv::cuda::GpuMat& image, cv::cuda::Stream& stream) {
-    if (image.rows != CARTSLAM_IMAGE_RES_X || image.cols != CARTSLAM_IMAGE_RES_Y) {
-        cv::cuda::resize(image, image, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), 0, 0, cv::INTER_LINEAR, stream);
-    }
-
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     if (image.type() != CV_8UC1) {
         cv::cuda::cvtColor(image, image, cv::COLOR_BGR2GRAY, 0, stream);
@@ -32,8 +28,8 @@ image_t getReferenceImage(boost::shared_ptr<DataElement> element) {
 }
 
 boost::shared_ptr<DataElement> DataSource::getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) {
-    if (!this->hasNext()) {
-        throw std::runtime_error("No more elements to read");
+    if (!this->isNextReady()) {
+        throw std::runtime_error("Next element is not ready!");
     }
 
     auto element = this->getNextInternal(logger, stream);
@@ -49,5 +45,13 @@ boost::shared_ptr<DataElement> DataSource::getNext(log4cxx::LoggerPtr logger, cv
     }
 
     return element;
+}
+
+const CameraIntrinsics DataSource::getCameraIntrinsics() const {
+    return this->intrinsics;
+}
+
+const cv::Size DataSource::getImageSize() const {
+    return this->imageSize;
 }
 }  // namespace cart

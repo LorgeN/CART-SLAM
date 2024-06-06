@@ -50,15 +50,14 @@ void drawOpticalFlowInternal(const cv::Mat_<float> &flowx, const cv::Mat_<float>
 
 namespace cart {
 
-ImageOpticalFlowModule::ImageOpticalFlowModule() : SyncWrapperSystemModule("ImageOpticalFlow") {
+ImageOpticalFlowModule::ImageOpticalFlowModule(const cv::Size imageRes) : SyncWrapperSystemModule("ImageOpticalFlow") {
     this->providesData.push_back(CARTSLAM_KEY_OPTFLOW);
-
-    this->opticalFlow = createOpticalFlow(this->stream);
+    this->opticalFlow = createOpticalFlow(imageRes, this->stream);
 }
 
-cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &stream) {
+cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(const cv::Size imageRes, cv::cuda::Stream &stream) {
     return cv::cuda::NvidiaOpticalFlow_2_0::create(
-        cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y),
+        imageRes,
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_PERF_LEVEL_MEDIUM,
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_OUTPUT_VECTOR_GRID_SIZE_1,
         cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_HINT_VECTOR_GRID_SIZE_1,
@@ -141,7 +140,7 @@ bool ImageOpticalFlowVisualizationModule::updateImage(System &system, SystemRunD
     boost::shared_ptr<cv::cuda::GpuMat> flow = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_OPTFLOW);
 
     cv::cuda::Stream stream;
-    cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(stream);
+    cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> opticalFlow = createOpticalFlow(flow->size(), stream);
 
     cv::Mat cpuFlow;
 

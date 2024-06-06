@@ -165,36 +165,7 @@ class SuperPixelDisparityPlaneSegmentationModule : public SyncWrapperSystemModul
    public:
     SuperPixelDisparityPlaneSegmentationModule(
         boost::shared_ptr<PlaneParameterProvider> planeParameterProvider,
-        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false, const unsigned int temporalSmoothingDistance = CARTSLAM_PLANE_TEMPORAL_DISTANCE_DEFAULT)
-        // Need optical flow for temporal smoothing
-        : SyncWrapperSystemModule("SPPlaneSegmentation"),
-          planeParameterProvider(planeParameterProvider),
-          updateInterval(updateInterval),
-          useTemporalSmoothing(useTemporalSmoothing),
-          resetInterval(resetInterval),
-          temporalSmoothingDistance(temporalSmoothingDistance) {
-        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS));
-        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL));
-        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE));
-        this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM));
-
-        if (useTemporalSmoothing) {
-            this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW));
-            for (size_t i = 1; i <= this->temporalSmoothingDistance; i++) {
-                this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_PLANES_UNSMOOTHED, -i));
-
-                if ((i + 1) <= this->temporalSmoothingDistance) {
-                    this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW, -i));
-                }
-            }
-        }
-
-        this->providesData.push_back(CARTSLAM_KEY_PLANES);
-
-        if (useTemporalSmoothing) {
-            this->providesData.push_back(CARTSLAM_KEY_PLANES_UNSMOOTHED);
-        }
-    };
+        const int updateInterval = 30, const int resetInterval = 10, const bool useTemporalSmoothing = false, const unsigned int temporalSmoothingDistance = CARTSLAM_PLANE_TEMPORAL_DISTANCE_DEFAULT);
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
 

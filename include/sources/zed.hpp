@@ -16,11 +16,11 @@ cv::Mat slMat2cvMat(sl::Mat& input);
 
 class ZEDDataSource : public DataSource {
    public:
-    ZEDDataSource(std::string path, bool extractDepthMeasure = false);
+    ZEDDataSource(std::string path, bool extractDepthMeasure = false, cv::Size imageSize = cv::Size(0, 0));
     ~ZEDDataSource();
-    bool hasNext() override;
+    bool isNextReady() override;
+    bool isFinished() override;
     DataElementType getProvidedType() override;
-    const CameraIntrinsics getCameraIntrinsics() const override;
 
    protected:
     boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) override;

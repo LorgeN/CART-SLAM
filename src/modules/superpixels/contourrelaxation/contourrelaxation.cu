@@ -332,6 +332,11 @@ ContourRelaxation::ContourRelaxation(const cv::cuda::GpuMat initialLabelImage, c
     this->logger = getLogger("ContourRelaxation");
 }
 
+void ContourRelaxation::setLabelImage(const cv::cuda::GpuMat& labelImage, const label_t maxLabelId) {
+    this->labelImage = labelImage;
+    this->maxLabelId = maxLabelId;
+}
+
 void ContourRelaxation::addFeature(boost::shared_ptr<IFeature> feature, const double weight) {
     FeatureContainer container = {
         .feature = feature,
@@ -374,8 +379,6 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     dim3 numBlocks(ceil(this->labelImage.cols / (threadsPerBlock.x * X_BATCH)), ceil(this->labelImage.rows / (threadsPerBlock.y * Y_BATCH)));
     initializeStatisticsKernel<<<numBlocks, threadsPerBlock, 0, stream>>>(cudaFeatures, this->features.size(), this->labelImage);
 
-    // Allocate memory for the border pixels. Assume that at most half of the image is border pixels. This assumption appears to hold on
-    // the "global" scale, but seems not to always hold at thread block level.
     CRPoint* borderPixels;
     unsigned int* borderCount;
     label_t* newLabels;
@@ -408,6 +411,7 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
         // Synchronize stream and transfer the border count to the host
         CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+        CUDA_SAFE_CALL(this->logger, cudaGetLastError());
 
         // Perform the relaxation
         size_t gridSize = ceil(hostBorderCount / (static_cast<double>(THREADS_PER_BLOCK_RELAX) * POINT_BATCH));
@@ -436,8 +440,8 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
     delete[] cudaFeaturesHost;
 
-    CUDA_SAFE_CALL(this->logger, cudaGetLastError());
     CUDA_SAFE_CALL(this->logger, cudaStreamSynchronize(stream));
+    CUDA_SAFE_CALL(this->logger, cudaGetLastError());
     CUDA_SAFE_CALL(this->logger, cudaStreamDestroy(stream));
 }
 }  // namespace cart::contour

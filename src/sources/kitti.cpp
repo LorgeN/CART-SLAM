@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <opencv2/cudawarping.hpp>
 
 #define LEFT_CAM_ID 2
 #define RIGHT_CAM_ID 3
@@ -83,17 +84,13 @@ bool readLine(std::string line, KITTICameraCalibration& calibration) {
 
 namespace cart::sources {
 
-KITTIDataSource::KITTIDataSource(std::string basePath, int sequence) {
-    this->path = basePath + "/sequences/" + addLeadingZeros(sequence, 2);
-    this->currentFrame = 0;
+KITTIDataSource::KITTIDataSource(std::string basePath, int sequence, cv::Size imageSize) : KITTIDataSource(basePath + "/sequences/" + addLeadingZeros(sequence, 2), imageSize) {
 }
 
-KITTIDataSource::KITTIDataSource(std::string path) {
+KITTIDataSource::KITTIDataSource(std::string path, cv::Size imageSize) : DataSource(imageSize) {
     this->path = path;
     this->currentFrame = 0;
-}
 
-const CameraIntrinsics KITTIDataSource::getCameraIntrinsics() const {
     std::string calibPath = this->path + "/calib.txt";
     std::ifstream inputFile(calibPath);
 
@@ -128,18 +125,26 @@ const CameraIntrinsics KITTIDataSource::getCameraIntrinsics() const {
         throw std::runtime_error("Failed to read calibration file");
     }
 
-    CameraIntrinsics intrinsics;
-    intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
+    // A bit hacky, but we need to read the first image to get the image size
+    cv::Mat tempImage = cv::imread(LEFT_PATH(this->currentFrame));
+    cv::Size actualImageSize = tempImage.size();
 
-    intrinsics.Q.at<float>(0, 3) = -leftCalibration.cx;
-    intrinsics.Q.at<float>(1, 3) = -leftCalibration.cy;
-    intrinsics.Q.at<float>(2, 2) = 0;
-    intrinsics.Q.at<float>(2, 3) = leftCalibration.fx;
-    intrinsics.Q.at<float>(3, 2) = -1.0 / leftCalibration.baseline;
-    intrinsics.Q.at<float>(3, 3) = ((leftCalibration.cx - rightCalibration.cx) / leftCalibration.baseline);
+    if (this->imageSize.width == 0 || this->imageSize.height == 0) {
+        this->imageSize = actualImageSize;
+    }
 
-    return intrinsics;
-};
+    float scaleWidth = static_cast<float>(this->imageSize.width) / actualImageSize.width;
+    float scaleHeight = static_cast<float>(this->imageSize.height) / actualImageSize.height;
+
+    this->intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
+
+    this->intrinsics.Q.at<float>(0, 3) = -leftCalibration.cx * scaleWidth;
+    this->intrinsics.Q.at<float>(1, 3) = -leftCalibration.cy * scaleHeight;
+    this->intrinsics.Q.at<float>(2, 2) = 0;
+    this->intrinsics.Q.at<float>(2, 3) = leftCalibration.fx * scaleWidth;
+    this->intrinsics.Q.at<float>(3, 2) = -1.0 / leftCalibration.baseline;
+    this->intrinsics.Q.at<float>(3, 3) = ((leftCalibration.cx - rightCalibration.cx) * scaleWidth / leftCalibration.baseline);
+}
 
 DataElementType KITTIDataSource::getProvidedType() {
     return DataElementType::STEREO;
@@ -156,14 +161,25 @@ boost::shared_ptr<DataElement> KITTIDataSource::getNextInternal(log4cxx::LoggerP
     element->left.upload(left, stream);
     element->right.upload(right, stream);
 
+    if (this->imageSize.width != left.cols || this->imageSize.height != left.rows) {
+        cv::cuda::resize(element->left, element->left, this->imageSize, 0, 0, cv::INTER_LINEAR, stream);
+        cv::cuda::resize(element->right, element->right, this->imageSize, 0, 0, cv::INTER_LINEAR, stream);
+    }
+
     return element;
 }
 
-bool KITTIDataSource::hasNext() {
+bool KITTIDataSource::isNextReady() {
     std::string leftPath = LEFT_PATH(this->currentFrame);
 
     // Check if the file exists
     struct stat buffer;
     return stat(leftPath.c_str(), &buffer) == 0;
+}
+
+bool KITTIDataSource::isFinished() {
+    // This source does not implement the realtime simulation. This is possible to do, since the KITTI dataset does
+    // provide the frame times. Future work could include this feature.
+    return !this->isNextReady();
 }
 }  // namespace cart::sources

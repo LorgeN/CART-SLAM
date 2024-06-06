@@ -57,7 +57,8 @@ boost::shared_ptr<SystemRunData> SystemRunData::getRelativeRun(const int8_t offs
     throw std::runtime_error("System has been destroyed");
 }
 
-System::System(boost::shared_ptr<DataSource> source) : dataSource(source) {
+System::System(boost::shared_ptr<DataSource> source, size_t workerThreads, size_t runRetention, size_t concurrentRunLimit)
+    : dataSource(source), runRetention(runRetention), concurrentRunLimit(concurrentRunLimit), threadPool(workerThreads) {
     this->logger = cart::getLogger("System");
 }
 
@@ -192,13 +193,13 @@ boost::shared_ptr<SystemRunData> System::startNewRun(cv::cuda::Stream& stream) {
 
     auto data = boost::make_shared<SystemRunData>(++this->runId, this->weak_from_this(), element);
     // Wait for a run to complete if we have reached the limit, and make sure we maintain the correct order
-    while (this->getActiveRunCount() >= CARTSLAM_CONCURRENT_RUN_LIMIT || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
+    while (this->getActiveRunCount() >= this->concurrentRunLimit || (this->runs.size() > 0 && this->runs[this->runs.size() - 1]->id != previousRunId)) {
         this->runCondition.wait(lock);
     }
 
     this->runs.push_back(data);
 
-    if (this->runs.size() > CARTSLAM_RUN_RETENTION) {
+    if (this->runs.size() > this->runRetention) {
         LOG4CXX_DEBUG(this->logger, "Deleting old run with ID " << this->runs[0]->id);
         this->runs.erase(this->runs.begin());
     }

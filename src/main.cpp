@@ -28,15 +28,19 @@ int main(int argc, char* argv[]) {
         kittiSeq = std::stoi(argv[2]);
     }
 
+    auto logger = cart::getLogger("main");
+
     auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
     // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], kittiSeq);
     auto system = boost::make_shared<cart::System>(dataSource);
 
-    system->addModule<cart::SuperPixelModule>();
+    LOG4CXX_INFO(logger, "Resolution: " << dataSource->getImageSize().width << "x" << dataSource->getImageSize().height);
+
+    system->addModule<cart::SuperPixelModule>(dataSource->getImageSize(), 18, 8, 16);
     system->addModule<cart::SuperPixelVisualizationModule>();
 
-    system->addModule<cart::ImageOpticalFlowModule>();
-    // system->addModule<cart::ImageOpticalFlowVisualizationModule>();
+    system->addModule<cart::ImageOpticalFlowModule>(dataSource->getImageSize());
+    //  system->addModule<cart::ImageOpticalFlowVisualizationModule>(dataSource->getImageSize());
 
     system->addModule<cart::ZEDImageDisparityModule>();
     // system->addModule<cart::ImageDisparityModule>(1, 256, 3, 2, 1);
@@ -52,7 +56,7 @@ int main(int argc, char* argv[]) {
     // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     // system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
     system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(true, true);
+    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
     system->addModule<cart::PlaneSegmentationBEVVisualizationModule>();
 
     // system->addModule<cart::SuperPixelPlaneFitModule>();
@@ -60,26 +64,24 @@ int main(int argc, char* argv[]) {
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
 
-    if (!dataSource->hasNext()) {
+    if (!dataSource->isNextReady()) {
         LOG4CXX_WARN(cart::getLogger("main"), "The provided data source has no data. Exiting.");
         return 1;
     }
 
-    auto logger = cart::getLogger("main");
-
     boost::future<void> last;
 
-    while (dataSource->hasNext()) {
-        system->run().then([logger](boost::future<void> future) {
+    while (dataSource->isNextReady()) {
+        last = system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
             }
-        }).wait();
+        });
     }
 
-    //last.get();
+    last.get();
 
     system->getThreadPool().join();
     return 0;

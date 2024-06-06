@@ -8,11 +8,11 @@
 namespace cart::sources {
 class KITTIDataSource : public DataSource {
    public:
-    KITTIDataSource(std::string basePath, int sequence);
-    KITTIDataSource(std::string path);
-    bool hasNext() override;
+    KITTIDataSource(std::string basePath, int sequence, cv::Size imageSize = cv::Size(0, 0));
+    KITTIDataSource(std::string path, cv::Size imageSize = cv::Size(0, 0));
+    bool isNextReady() override;
+    bool isFinished() override;
     DataElementType getProvidedType() override;
-    const CameraIntrinsics getCameraIntrinsics() const override;
 
    protected:
     boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) override;

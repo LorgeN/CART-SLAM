@@ -49,6 +49,8 @@ class ContourRelaxation {
     ContourRelaxation(const cv::cuda::GpuMat initialLabelImage, const label_t maxLabelId, const double directCliqueCost,
                       const double diagonalCliqueCost);
 
+    void setLabelImage(const cv::cuda::GpuMat& labelImage, const label_t maxLabelId);
+
     template <typename T, typename... Args>
     void addFeature(const double weight, Args... args) {
         if (weight <= 0) {

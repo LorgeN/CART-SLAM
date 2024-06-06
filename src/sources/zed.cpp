@@ -6,21 +6,19 @@
 #include <opencv2/cudaimgproc.hpp>
 
 namespace cart::sources {
-const sl::Resolution RES = sl::Resolution(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y);
-
-ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(path), extractDisparityMeasure(extractDepthMeasure) {
+ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure, cv::Size imageSize) : DataSource(imageSize), path(path), extractDisparityMeasure(extractDepthMeasure) {
     this->camera = boost::make_shared<sl::Camera>();
 
     sl::InitParameters params;
 
-    // Enable for real time testing. This will skip frames if the processing is too slow, and will throw errors if
-    // the processing is too fast.
-    // params.svo_real_time_mode = true;
+#ifdef CARTSLAM_ZED_REALTIME_MODE
+    params.svo_real_time_mode = true;
+#endif
 
     params.input.setFromSVOFile(path.c_str());
     params.coordinate_units = sl::UNIT::METER;
     params.depth_mode = sl::DEPTH_MODE::ULTRA;
-    params.depth_maximum_distance = 50.0f;
+    params.depth_maximum_distance = 35.0f;
 
 #ifdef CARTSLAM_DEBUG
     params.sdk_verbose = true;
@@ -30,45 +28,53 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(
     if (err != sl::ERROR_CODE::SUCCESS) {
         throw std::runtime_error("Failed to open ZED camera");
     }
+
+    if (imageSize.width == 0 || imageSize.height == 0) {
+        this->imageSize = cv::Size(1280, 720);
+    }
+
+    auto config = this->camera->getCameraInformation().camera_configuration;
+    auto info = config.calibration_parameters;
+
+    this->intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
+
+    float scalingX = static_cast<float>(this->imageSize.width) / config.resolution.width;
+    float scalingY = static_cast<float>(this->imageSize.height) / config.resolution.height;
+
+    float left_cx = info.left_cam.cx * scalingX;
+    float left_cy = info.left_cam.cy * scalingY;
+    float left_fx = info.left_cam.fx * scalingX;
+    float right_cx = info.right_cam.cx * scalingX;
+    float baseline = -info.getCameraBaseline();
+
+    this->intrinsics.Q.at<float>(0, 3) = -left_cx;
+    this->intrinsics.Q.at<float>(1, 3) = -left_cy;
+    this->intrinsics.Q.at<float>(2, 2) = 0;
+    this->intrinsics.Q.at<float>(2, 3) = left_fx;
+    this->intrinsics.Q.at<float>(3, 2) = -1.0 / baseline;
+    this->intrinsics.Q.at<float>(3, 3) = ((left_cx - right_cx) / baseline);
 }
 
 ZEDDataSource::~ZEDDataSource() {
     this->camera->close();
 }
 
-const CameraIntrinsics ZEDDataSource::getCameraIntrinsics() const {
-    auto info = this->camera->getCameraInformation().camera_configuration.calibration_parameters;
-
-    // Find scaling factor
-    float scalingFactorX = CARTSLAM_IMAGE_RES_X / static_cast<float>(info.left_cam.image_size.width);
-    float scalingFactorY = CARTSLAM_IMAGE_RES_Y / static_cast<float>(info.left_cam.image_size.height);
-
-    CameraIntrinsics intrinsics;
-    intrinsics.Q = cv::Mat::eye(4, 4, CV_32F);
-
-    float left_cx = info.left_cam.cx * scalingFactorX;
-    float left_cy = info.left_cam.cy * scalingFactorY;
-    float left_fx = info.left_cam.fx * scalingFactorX;
-    float right_cx = info.right_cam.cx * scalingFactorX;
-    float baseline = -info.getCameraBaseline();
-
-    intrinsics.Q.at<float>(0, 3) = -left_cx;
-    intrinsics.Q.at<float>(1, 3) = -left_cy;
-    intrinsics.Q.at<float>(2, 2) = 0;
-    intrinsics.Q.at<float>(2, 3) = left_fx;
-    intrinsics.Q.at<float>(3, 2) = -1.0 / baseline;
-    intrinsics.Q.at<float>(3, 3) = ((left_cx - right_cx) / baseline);
-
-    return intrinsics;
-}
-
-bool ZEDDataSource::hasNext() {
-    if (!this->hasGrabbed) {
+bool ZEDDataSource::isNextReady() {
+    if (!this->hasGrabbed || this->grabResult != sl::ERROR_CODE::SUCCESS) {
         this->grabResult = this->camera->grab();
         this->hasGrabbed = true;
     }
 
     return this->grabResult == sl::ERROR_CODE::SUCCESS;
+}
+
+bool ZEDDataSource::isFinished() {
+    if (!this->hasGrabbed) {
+        this->grabResult = this->camera->grab();
+        this->hasGrabbed = true;
+    }
+
+    return this->grabResult == sl::ERROR_CODE::END_OF_SVOFILE_REACHED;
 }
 
 DataElementType ZEDDataSource::getProvidedType() {
@@ -86,14 +92,16 @@ boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(log4cxx::LoggerPtr
 
     this->hasGrabbed = false;
 
+    const sl::Resolution res(this->imageSize.width, this->imageSize.height);
+
     sl::Mat left, right;
-    sl::ERROR_CODE leftRes = this->camera->retrieveImage(left, sl::VIEW::LEFT, sl::MEM::GPU, RES);
+    sl::ERROR_CODE leftRes = this->camera->retrieveImage(left, sl::VIEW::LEFT, sl::MEM::GPU, res);
     if (leftRes != sl::ERROR_CODE::SUCCESS) {
         LOG4CXX_ERROR(logger, "Failed to retrieve left image");
         return nullptr;
     }
 
-    sl::ERROR_CODE rightRes = this->camera->retrieveImage(right, sl::VIEW::RIGHT, sl::MEM::GPU, RES);
+    sl::ERROR_CODE rightRes = this->camera->retrieveImage(right, sl::VIEW::RIGHT, sl::MEM::GPU, res);
     if (rightRes != sl::ERROR_CODE::SUCCESS) {
         LOG4CXX_ERROR(logger, "Failed to retrieve right image");
         return nullptr;
@@ -113,7 +121,7 @@ boost::shared_ptr<DataElement> ZEDDataSource::getNextInternal(log4cxx::LoggerPtr
 
     if (this->extractDisparityMeasure) {
         sl::Mat disparityMeasure;
-        sl::ERROR_CODE dispRes = this->camera->retrieveMeasure(disparityMeasure, sl::MEASURE::DISPARITY, sl::MEM::GPU, RES);
+        sl::ERROR_CODE dispRes = this->camera->retrieveMeasure(disparityMeasure, sl::MEASURE::DISPARITY, sl::MEM::GPU, res);
         if (dispRes != sl::ERROR_CODE::SUCCESS) {
             LOG4CXX_ERROR(logger, "Failed to retrieve disparity measure");
             return nullptr;

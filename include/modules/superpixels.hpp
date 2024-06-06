@@ -15,10 +15,11 @@ namespace cart {
 class SuperPixelModule : public SyncWrapperSystemModule {
    public:
     SuperPixelModule(
+        const cv::Size imageRes, 
         const unsigned int initialIterations = 18,
-        const unsigned int iterations = 8,
-        const unsigned int blockWidth = 12,
-        const unsigned int blockHeight = 12,
+        const unsigned int iterations = 6,
+        const unsigned int blockSize = 12,
+        const unsigned int resetIterations = 64,
         const double directCliqueCost = 0.2,
         const double diagonalCliqueCost = 0.2 / sqrt(2),
         const double compactnessWeight = 0.05,
@@ -32,6 +33,8 @@ class SuperPixelModule : public SyncWrapperSystemModule {
     boost::mutex mutex;  // Mutex to protect the contour relaxation object
     const unsigned int initialIterations;
     const unsigned int iterations;
+    const unsigned int resetIterations;
+    const unsigned int blockSize;
     contour::label_t maxLabelId;
 };
 

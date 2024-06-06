@@ -1,15 +1,7 @@
 #pragma once
 
-#ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
 #define CARTSLAM_RUN_RETENTION 32
 #define CARTSLAM_CONCURRENT_RUN_LIMIT 12
-#define CARTSLAM_IMAGE_CHANNELS 1
-#else
-#define CARTSLAM_RUN_RETENTION 24
-#define CARTSLAM_CONCURRENT_RUN_LIMIT 8
-#define CARTSLAM_IMAGE_CHANNELS 3
-#endif
-
 #define CARTSLAM_WORKER_THREADS (16 * CARTSLAM_CONCURRENT_RUN_LIMIT)
 
 #include <log4cxx/logger.h>
@@ -61,7 +53,7 @@ class SystemRunData : public DataContainer {
 
 class System : public boost::enable_shared_from_this<System>, public DataContainer {
    public:
-    System(boost::shared_ptr<DataSource> dataSource);
+    System(boost::shared_ptr<DataSource> dataSource, size_t workerThreads = CARTSLAM_WORKER_THREADS, size_t runRetention = CARTSLAM_RUN_RETENTION, size_t concurrentRunLimit = CARTSLAM_CONCURRENT_RUN_LIMIT);
     ~System() = default;
     boost::future<void> run();
 
@@ -105,8 +97,11 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
 
     bool verifiedDependencies = false;
 
+    const size_t runRetention;
+    const size_t concurrentRunLimit;
+
     log4cxx::LoggerPtr logger;
-    boost::asio::thread_pool threadPool = boost::asio::thread_pool(CARTSLAM_WORKER_THREADS);
+    boost::asio::thread_pool threadPool;
 
     uint32_t runId = 0;
     boost::shared_ptr<DataSource> dataSource;

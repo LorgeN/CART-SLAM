@@ -16,13 +16,13 @@ namespace cart {
 
 typedef int16_t optical_flow_t;
 
-cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(cv::cuda::Stream &stream);
+cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> createOpticalFlow(const cv::Size imageRes, cv::cuda::Stream &stream);
 
 cv::Mat drawOpticalFlow(const cv::cuda::GpuMat &imageFlow, cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> &flow, cv::cuda::Stream &stream);
 
 class ImageOpticalFlowModule : public SyncWrapperSystemModule {
    public:
-    ImageOpticalFlowModule();
+    ImageOpticalFlowModule(const cv::Size imageRes);
 
     system_data_t runInternal(System &system, SystemRunData &data) override;
 
@@ -41,9 +41,9 @@ class ImageOpticalFlowModule : public SyncWrapperSystemModule {
 
 class ImageOpticalFlowVisualizationModule : public VisualizationModule {
    public:
-    ImageOpticalFlowVisualizationModule(int points = 10) : VisualizationModule("ImageOpticalFlowVisualization") {
+    ImageOpticalFlowVisualizationModule(const cv::Size imageRes, int points = 10) : VisualizationModule("ImageOpticalFlowVisualization") {
         this->requiresData.push_back(module_dependency_t(CARTSLAM_KEY_OPTFLOW));
-        this->visualizationPoints = getRandomPoints(points, cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y));
+        this->visualizationPoints = getRandomPoints(points, imageRes);
     };
 
     bool updateImage(System &system, SystemRunData &data, cv::Mat &image) override;

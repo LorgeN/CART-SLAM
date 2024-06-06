@@ -17,10 +17,11 @@
 
 namespace cart {
 SuperPixelModule::SuperPixelModule(
+    const cv::Size imageRes,
     const unsigned int initialIterations,
     const unsigned int iterations,
-    const unsigned int blockWidth,
-    const unsigned int blockHeight,
+    const unsigned int blockSize,
+    const unsigned int resetIterations,
     const double directCliqueCost,
     const double diagonalCliqueCost,
     const double compactnessWeight,
@@ -28,9 +29,11 @@ SuperPixelModule::SuperPixelModule(
     const double disparityWeight)
     : SyncWrapperSystemModule("SuperPixelDetect"),
       initialIterations(initialIterations),
-      iterations(iterations) {
-    if (blockWidth < 1 || blockHeight < 1) {
-        throw std::invalid_argument("blockWidth and blockHeight must be more than 1");
+      iterations(iterations),
+      resetIterations(resetIterations),
+      blockSize(blockSize) {
+    if (blockSize < 1) {
+        throw std::invalid_argument("blockSize must be more than 1");
     }
 
     if (directCliqueCost < 0) {
@@ -49,7 +52,7 @@ SuperPixelModule::SuperPixelModule(
     this->providesData.push_back(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL);
 
     cv::cuda::GpuMat initialLabelImage;
-    contour::createBlockInitialization(cv::Size(CARTSLAM_IMAGE_RES_X, CARTSLAM_IMAGE_RES_Y), blockWidth, blockHeight, initialLabelImage, this->maxLabelId);
+    contour::createBlockInitialization(imageRes, blockSize, blockSize, initialLabelImage, this->maxLabelId);
 
     this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, diagonalCliqueCost);
 
@@ -77,11 +80,22 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_BGR2YCrCb, 0, stream);
 #endif
 
+    // We do a reset every at resetIterations, to prevent the superpixels from becoming very messy
+    // over time. This is especially important when the camera is moving, as the superpixels will
+    // drift over time to weird shapes.
+    if (data.id % this->resetIterations == 0) {
+        // Reset the labels every resetIterations
+        cv::cuda::GpuMat initialLabelImage;
+        contour::createBlockInitialization(image.size(), this->blockSize, this->blockSize, initialLabelImage, this->maxLabelId);
+
+        this->contourRelaxation->setLabelImage(initialLabelImage, this->maxLabelId);
+    }
+
     stream.waitForCompletion();
 
     auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
 
-    const unsigned int numIterations = data.id == 1 ? this->initialIterations : this->iterations;
+    const unsigned int numIterations = (data.id == 1 || data.id % this->resetIterations == 0) ? this->initialIterations : this->iterations;
 
     cv::cuda::GpuMat relaxedLabelImage;
 

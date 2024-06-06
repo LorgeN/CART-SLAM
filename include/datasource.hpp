@@ -5,9 +5,6 @@
 #include <boost/thread.hpp>
 #include <opencv2/opencv.hpp>
 
-#define CARTSLAM_IMAGE_RES_X 1280
-#define CARTSLAM_IMAGE_RES_Y 384
-
 namespace cart {
 typedef cv::cuda::GpuMat image_t;
 
@@ -47,7 +44,7 @@ class StereoDataElement : public DataElement {
 image_t getReferenceImage(boost::shared_ptr<DataElement> element);
 
 template <typename T>
-class DataElementVisitor { 
+class DataElementVisitor {
    public:
     virtual T visitStereo(boost::shared_ptr<StereoDataElement> element) {
         throw std::runtime_error("Not implemented");
@@ -66,13 +63,21 @@ class DataElementVisitor {
 
 class DataSource {
    public:
+    DataSource(cv::Size imageSize) : imageSize(imageSize){};
+
     virtual ~DataSource() = default;
     boost::shared_ptr<DataElement> getNext(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream);
-    virtual bool hasNext() = 0;
+    virtual bool isNextReady() = 0;
+    virtual bool isFinished() = 0;
     virtual DataElementType getProvidedType() = 0;
-    virtual const CameraIntrinsics getCameraIntrinsics() const = 0;
+
+    const CameraIntrinsics getCameraIntrinsics() const;
+    const cv::Size getImageSize() const;
 
    protected:
     virtual boost::shared_ptr<DataElement> getNextInternal(log4cxx::LoggerPtr logger, cv::cuda::Stream& stream) = 0;
+
+    CameraIntrinsics intrinsics;
+    cv::Size imageSize;
 };
 }  // namespace cart
