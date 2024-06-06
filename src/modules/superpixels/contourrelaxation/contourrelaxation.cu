@@ -5,7 +5,6 @@
 
 #include "modules/superpixels/contourrelaxation/contourrelaxation.hpp"
 #include "modules/superpixels/contourrelaxation/features/feature.cuh"
-#include "timing.hpp"
 #include "utils/cuda.cuh"
 
 #define THREADS_PER_BLOCK_X 16
@@ -219,11 +218,7 @@ __global__ void findBorderPixels(cv::cuda::PtrStepSz<cart::contour::label_t> lab
     }
 }
 
-__global__ void performRelaxation(
-    cart::contour::CRSettings settings,
-    cart::contour::CRPoint* borderPixels,
-    cart::contour::label_t* newLabels,
-    unsigned int* borderCount) {
+__global__ void performRelaxation(cart::contour::CRSettings settings, cart::contour::CRPoint* borderPixels, cart::contour::label_t* newLabels, unsigned int* borderCount) {
     __shared__ cart::contour::label_t neighboursShared[THREADS_PER_BLOCK_RELAX * 9];
     __shared__ cart::contour::label_t neighbourhoods[THREADS_PER_BLOCK_RELAX * 9];
 
@@ -401,7 +396,7 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
     unsigned int hostBorderCount;
     dim3 threadsPerBlockBorder(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
     dim3 numBlocksBorder(ceil(labelImage.cols / (THREADS_PER_BLOCK_X * X_BATCH)), ceil(labelImage.rows / (THREADS_PER_BLOCK_Y * Y_BATCH)));
-    
+
     for (size_t i = 0; i < numIterations; i++) {
         // Reset the border count
         CUDA_SAFE_CALL(this->logger, cudaMemsetAsync(borderCount, 0, sizeof(unsigned int), stream));

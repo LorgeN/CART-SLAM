@@ -4,7 +4,6 @@
 #include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/planeseg.hpp"
-#include "timing.hpp"
 #include "utils/cuda.cuh"
 #include "utils/modules.hpp"
 #include "utils/peaks.hpp"

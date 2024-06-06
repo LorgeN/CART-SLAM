@@ -7,7 +7,6 @@
 #include "cartslam.hpp"
 #include "modules/disparity.hpp"
 #include "modules/planeseg.hpp"
-#include "timing.hpp"
 #include "utils/cuda.cuh"
 #include "utils/modules.hpp"
 #include "utils/peaks.hpp"
@@ -95,7 +94,7 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
             // This will result in race conditions, but it's fine for visualization. The idea is that
             // taller vertical planes will be more visible.
             uint8_t curr = output[INDEX(column, row, outputRowStep)];
-            curr -= min(curr, 2);
+            curr -= min(curr, static_cast<int>(ceil(2 * z)));
             output[INDEX(column, row, outputRowStep)] = curr;
         }
     }

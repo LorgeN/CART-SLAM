@@ -9,16 +9,12 @@ namespace cart {
 system_data_t DepthModule::runInternal(System& system, SystemRunData& data) {
     auto disparityData = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY);
 
+    // This can be static as we assume it does not change. If we want to support changing cameras,
+    // we should update this at every run.
     static auto Q = system.getDataSource()->getCameraIntrinsics().Q;
 
     cv::cuda::GpuMat depth;
     cv::cuda::Stream stream;
-
-    // Print Q matrix
-    LOG4CXX_DEBUG(this->logger, "Q matrix: ");
-    for (int i = 0; i < 4; i++) {
-        LOG4CXX_DEBUG(this->logger, Q.at<float>(i, 0) << " " << Q.at<float>(i, 1) << " " << Q.at<float>(i, 2) << " " << Q.at<float>(i, 3));
-    }
 
     // Scale disparity by / 16.0 and convert to float
     cv::cuda::GpuMat disparityFloat;

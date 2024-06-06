@@ -38,6 +38,7 @@ add_executable( cart_slam
     src/modules/planeseg/planeseg.cu
     src/modules/planeseg/planeseg_vis.cu
     src/modules/planeseg/sp_planeseg.cu
+    src/modules/planefit.cu
     src/modules/superpixels.cu
     src/modules/superpixels/visualization.cu
     src/modules/superpixels/contourrelaxation/features/compactness.cu

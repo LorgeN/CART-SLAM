@@ -1,5 +1,13 @@
 #include "cartslam.hpp"
 
+#ifdef CARTSLAM_TIMING
+#include "timing.hpp"
+
+#define IF_TIMING(x) , x
+#else
+#define IF_TIMING(x)
+#endif
+
 namespace cart {
 log4cxx::LoggerPtr SystemRunData::getLogger() {
     return this->logger;
@@ -224,9 +232,17 @@ boost::future<void> System::run() {
     cv::cuda::Stream stream;
 
     // TODO: Sort the modules topologically for more efficient execution order
+#ifdef CARTSLAM_TIMING
+    LOG4CXX_DEBUG(this->logger, "Starting timing for frame");
+    auto frameTiming = timing::initTiming("frame");
+#endif
 
     boost::shared_ptr<SystemRunData> runData = this->startNewRun(stream);
     LOG4CXX_INFO(this->logger, "Starting new run with id " << runData->id);
+
+#ifdef CARTSLAM_TIMING
+    timing::startTiming(frameTiming);
+#endif
 
     std::vector<boost::future<void>> moduleFutures;
 
@@ -234,10 +250,19 @@ boost::future<void> System::run() {
         std::string moduleName = "\"" + module->name + "\"";
         LOG4CXX_INFO(this->logger, "Running module " << moduleName);
 
+#ifdef CARTSLAM_TIMING
+        LOG4CXX_DEBUG(this->logger, "Starting timing for module " << moduleName);
+        auto timing = timing::initTiming(module->name);
+#endif
+
         auto requiredData = module->getRequiredData();
         boost::future<system_data_t> future = this->waitForDependencies(requiredData, runData)
-                                                  .then([this, module, runData, moduleName](auto future) {
+                                                  .then([this, module, runData, moduleName IF_TIMING(timing)](auto future) {
                                                       future.get();
+
+#ifdef CARTSLAM_TIMING
+                                                      timing::startTiming(timing);
+#endif
 
                                                       return module->run(*this, *runData);
                                                   })
@@ -245,7 +270,7 @@ boost::future<void> System::run() {
 
         LOG4CXX_DEBUG(runData->getLogger(), "Module " << moduleName << " has been submitted for execution");
 
-        moduleFutures.push_back(future.then([this, runData, moduleName](boost::future<system_data_t> future) {
+        moduleFutures.push_back(future.then([this, runData, moduleName IF_TIMING(timing)](boost::future<system_data_t> future) {
             system_data_t data;
 
             try {
@@ -254,6 +279,10 @@ boost::future<void> System::run() {
                 LOG4CXX_ERROR(runData->getLogger(), "Error running module " << moduleName << ": " << cart::getExceptionMessage(e));
                 std::throw_with_nested(std::runtime_error("Error running module " + moduleName + " for run ID " + std::to_string(runData->id)));
             }
+
+#ifdef CARTSLAM_TIMING
+            timing::endTiming(timing);
+#endif
 
             LOG4CXX_INFO(runData->getLogger(), "Module " << moduleName << " has completed for run ID " << runData->id);
 
@@ -269,7 +298,7 @@ boost::future<void> System::run() {
     LOG4CXX_DEBUG(runData->getLogger(), "All modules have been submitted for execution for run ID " << runData->id);
     log4cxx::LoggerPtr logger = runData->getLogger();
 
-    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger](auto future) {
+    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger IF_TIMING(frameTiming)](auto future) {
         LOG4CXX_DEBUG(logger, "All modules have finished for run with ID " << runData->id);
 
         try {
@@ -285,6 +314,10 @@ boost::future<void> System::run() {
 
         runData->markAsComplete();
         LOG4CXX_INFO(logger, "Run with ID " << runData->id << " has completed.");
+
+#ifdef CARTSLAM_TIMING
+        timing::endTiming(frameTiming);
+#endif
 
         this->runCondition.notify_all();
     });

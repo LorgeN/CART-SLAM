@@ -19,7 +19,8 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure) : path(
 
     params.input.setFromSVOFile(path.c_str());
     params.coordinate_units = sl::UNIT::METER;
-    params.depth_mode = sl::DEPTH_MODE::QUALITY;
+    params.depth_mode = sl::DEPTH_MODE::ULTRA;
+    params.depth_maximum_distance = 50.0f;
 
 #ifdef CARTSLAM_DEBUG
     params.sdk_verbose = true;
@@ -50,7 +51,7 @@ const CameraIntrinsics ZEDDataSource::getCameraIntrinsics() const {
     float left_fx = info.left_cam.fx * scalingFactorX;
     float right_cx = info.right_cam.cx * scalingFactorX;
     float baseline = -info.getCameraBaseline();
- 
+
     intrinsics.Q.at<float>(0, 3) = -left_cx;
     intrinsics.Q.at<float>(1, 3) = -left_cy;
     intrinsics.Q.at<float>(2, 2) = 0;

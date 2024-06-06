@@ -1,41 +1,64 @@
 #pragma once
 
-#define CARTSLAM_END_TIMING(name) CARTSLAM_END_TIMING_TO(name, std::cout)
-
-#ifdef CARTSLAM_TIMING
-
+#include <boost/make_shared.hpp>
+#include <boost/shared_ptr.hpp>
+#include <boost/thread/lock_guard.hpp>
+#include <boost/thread/mutex.hpp>
 #include <chrono>
+#include <ctime>
+#include <fstream>
 #include <iostream>
-#include <atomic>
+#include <string>
 
-#define CARTSLAM_END_TIMING_SILENT(name) \
-    auto name##_end = std::chrono::high_resolution_clock::now();
-#define CARTSLAM_START_TIMING(name) auto name##_start = std::chrono::high_resolution_clock::now()
-#define CARTSLAM_END_TIMING_TO(name, write_to)                                                                   \
-    auto name##_end = std::chrono::high_resolution_clock::now();                                                 \
-    write_to << "TIMING: " << #name << " - "                                                                     \
-             << std::chrono::duration_cast<std::chrono::milliseconds>(name##_end - name##_start).count() << "ms" \
-             << std::endl
+#include "logging.hpp"
+#include "utils/csv.hpp"
 
-#define CARTSLAM_START_AVERAGE_TIMING(name) \
-    std::atomic_uint name##_average_count = 0;           \
-    std::atomic_ullong name##_average_total = 0
-#define CARTSLAM_INCREMENT_AVERAGE_TIMING(name)                                                                      \
-    name##_average_total += std::chrono::duration_cast<std::chrono::milliseconds>(name##_end - name##_start).count(); \
-    name##_average_count++
-#define CARTSLAM_END_AVERAGE_TIMING(name)                                                                                         \
-    std::cout << "TIMING AVERAGE: " << #name << " - " << name##_average_total / name##_average_count << "ms (Total: " \
-              << name##_average_total << "ms) (" << name##_average_count << " runs, "                                   \
-              << 1000.0 / (name##_average_total / name##_average_count) << " FPS)" << std::endl
+namespace cart::timing {
+struct timing_handle_t {
+    const std::string name;
+    const std::chrono::time_point<std::chrono::high_resolution_clock> init;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    std::chrono::time_point<std::chrono::high_resolution_clock> end;
 
-#else
+    timing_handle_t(const std::string name, const std::chrono::time_point<std::chrono::high_resolution_clock> init)
+        : name(name), init(init) {}
+};
 
-#define CARTSLAM_END_TIMING_SILENT(name)
-#define CARTSLAM_START_TIMING(name)
-#define CARTSLAM_END_TIMING_TO(name, write_to)
+inline const std::string timeToString(const std::chrono::time_point<std::chrono::system_clock> &time) {
+    std::time_t t = std::chrono::system_clock::to_time_t(time);
+    char buf[21];
+    strftime(buf, 20, "%d.%m.%Y %H:%M:%S", localtime(&t));
+    return std::string(buf);
+}
 
-#define CARTSLAM_START_AVERAGE_TIMING(name)
-#define CARTSLAM_INCREMENT_AVERAGE_TIMING(name)
-#define CARTSLAM_END_AVERAGE_TIMING(name)
+inline const long long getMilliseconds(const std::chrono::time_point<std::chrono::high_resolution_clock> &time) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch()).count();
+}
 
-#endif
+// Use current time to generate a unique filename
+inline const std::string generateFileName() {
+    return "timing-" + timeToString(std::chrono::system_clock::now()) + ".csv";
+}
+
+inline boost::shared_ptr<timing_handle_t> initTiming(const std::string &name) {
+    return boost::make_shared<timing_handle_t>(name, std::chrono::high_resolution_clock::now());
+}
+
+inline void startTiming(boost::shared_ptr<timing_handle_t> handle) {
+    handle->start = std::chrono::high_resolution_clock::now();
+}
+
+inline void endTiming(boost::shared_ptr<timing_handle_t> handle) {
+    static utils::csvfile timingFile(generateFileName(), ";", std::vector<std::string>{"name", "time_init", "time_start", "time_end", "duration_ms"});
+    static boost::mutex mutex;
+
+    handle->end = std::chrono::high_resolution_clock::now();
+
+    // Write to file
+    {
+        boost::lock_guard<boost::mutex> lock(mutex);
+        timingFile << handle->name << getMilliseconds(handle->init) << getMilliseconds(handle->start) << getMilliseconds(handle->end)
+                   << std::chrono::duration_cast<std::chrono::milliseconds>(handle->end - handle->start).count() << utils::endrow;
+    }
+}
+}  // namespace cart::timing
