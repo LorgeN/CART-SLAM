@@ -14,6 +14,7 @@
 #define X_BATCH 4
 #define Y_BATCH 4
 
+#ifdef CARTSLAM_ZED
 __global__ void processZedDisparity(cv::cuda::PtrStepSz<float> input, cv::cuda::PtrStepSz<int16_t> output) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -42,6 +43,7 @@ __global__ void processZedDisparity(cv::cuda::PtrStepSz<float> input, cv::cuda::
         }
     }
 }
+#endif  // CARTSLAM_ZED
 
 namespace cart {
 system_data_t ImageDisparityModule::runInternal(System& system, SystemRunData& data) {

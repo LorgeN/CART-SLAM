@@ -1,3 +1,5 @@
+#include <cooperative_groups.h>
+
 #include <opencv2/core/cuda_stream_accessor.hpp>
 
 #include "cartslam.hpp"
@@ -7,6 +9,7 @@
 #include "utils/cuda.cuh"
 #include "utils/modules.hpp"
 
+#define MAX_SHARED_MEMORY 32768
 #define CARTSLAM_DISPARITY_DERIVATIVE_INVALID (-32768)
 
 #define THREADS_PER_BLOCK_X 32
@@ -15,15 +18,43 @@
 #define Y_BATCH 4
 #define SHARED_SIZE ((X_BATCH * THREADS_PER_BLOCK_X) * (Y_BATCH * (LOW_PASS_FILTER_PADDING * 2 + THREADS_PER_BLOCK_Y)))
 
+#define LABEL_INDEX(label, plane) ((label) * 3 + (plane))
+
+namespace cg = cooperative_groups;
+
+// Based on https://forums.developer.nvidia.com/t/how-to-use-atomiccas-to-implement-atomicadd-short-trouble-adapting-programming-guide-example/22712/9
+// There will not be more than 65535 votes per label, so we can use 16 bit integers, and we can also
+// assume that there will be no overflow so we skip checking for that, which makes this operation a
+// bit faster and simpler
+__device__ uint16_t unsafeAtomicAdd(uint16_t* address, uint16_t val) {
+    unsigned int* base_address = (unsigned int*)((size_t)address & ~2);  // Align to 4 bytes
+    unsigned int intVal = ((size_t)address & 2) ? ((unsigned int)val << 16) : val;
+    unsigned int intOld = atomicAdd(base_address, intVal);
+    return ((size_t)address & 2) ? (unsigned short)(intOld >> 16) : (unsigned short)(intOld & 0xffff);
+}
+
 __global__ void performSuperPixelClassifications(const cv::cuda::PtrStepSz<cart::derivative_t> derivatives,
                                                  const cv::cuda::PtrStepSz<cart::contour::label_t> labels,
                                                  cv::cuda::PtrStepSz<uint8_t> planes,
                                                  const cart::PlaneParameters params,
-                                                 cv::cuda::PtrStepSz<int> globalLabelData,
+                                                 cv::cuda::PtrStepSz<uint16_t> globalLabelData,
                                                  const cart::cv_mat_ptr_t<uint8_t>* previousPlanes,
                                                  const cart::cv_mat_ptr_t<cart::optical_flow_t>* previousOpticalFlow,
                                                  const int previousPlanesCount,
                                                  const int maxLabel) {
+    extern __shared__ uint16_t sharedLabelData[];  // For each label; Track vertical, horizontal and unknown votes. Total these for total pixels
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < maxLabel; i += blockDim.x * blockDim.y) {
+#pragma unroll
+        for (int plane = 0; plane < 3; plane++) {
+            sharedLabelData[LABEL_INDEX(i, plane)] = 0;
+        }
+    }
+
+    cg::thread_block tb = cg::this_thread_block();
+
+    tb.sync();
+
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -38,8 +69,6 @@ __global__ void performSuperPixelClassifications(const cv::cuda::PtrStepSz<cart:
 
     int verticalStart = params.verticalRange.first;
     int verticalEnd = params.verticalRange.second;
-
-    size_t globalStep = globalLabelData.step / sizeof(int);
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
@@ -99,15 +128,28 @@ __global__ void performSuperPixelClassifications(const cv::cuda::PtrStepSz<cart:
             }
 
             cart::contour::label_t label = labels[INDEX(pixelX + j, pixelY + i, labels.step / sizeof(cart::contour::label_t))];
-            atomicAdd(&globalLabelData[INDEX(plane, label, globalStep)], 1);
+            unsafeAtomicAdd(&sharedLabelData[LABEL_INDEX(label, plane)], 1);
+        }
+    }
+
+    tb.sync();
+
+    size_t globalStep = globalLabelData.step / sizeof(uint16_t);
+
+    for (int i = threadIdx.x + (blockDim.x * threadIdx.y); i < maxLabel; i += blockDim.x * blockDim.y) {
+#pragma unroll
+        for (int plane = 0; plane < 3; plane++) {
+            unsafeAtomicAdd(&globalLabelData[INDEX(plane, i, globalStep)], sharedLabelData[LABEL_INDEX(i, plane)]);
         }
     }
 }
 
 __global__ void classifyPlanes(const cv::cuda::PtrStepSz<cart::contour::label_t> labels,
-                               const cv::cuda::PtrStepSz<int> globalLabelData,
+                               const cv::cuda::PtrStepSz<uint16_t> globalLabelData,
                                cv::cuda::PtrStepSz<uint8_t> resultingPlanes,
                                int maxLabel) {
+    extern __shared__ cart::Plane sharedPlaneAssignments[];  // For each label; Track vertical, horizontal and unknown votes. Total these for total pixels
+
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -115,7 +157,29 @@ __global__ void classifyPlanes(const cv::cuda::PtrStepSz<cart::contour::label_t>
     int pixelY = y * Y_BATCH;
 
     size_t planesRowStep = resultingPlanes.step / sizeof(uint8_t);
-    size_t globalStep = globalLabelData.step / sizeof(int);
+    size_t globalStep = globalLabelData.step / sizeof(uint16_t);
+
+    for (int label = threadIdx.x + (blockDim.x * threadIdx.y); label < maxLabel; label += blockDim.x * blockDim.y) {
+        int maxVotes = globalLabelData[INDEX(cart::Plane::UNKNOWN, label, globalStep)];
+        cart::Plane max = cart::Plane::UNKNOWN;
+
+        int verticalVotes = globalLabelData[INDEX(cart::Plane::VERTICAL, label, globalStep)];
+        int horizontalVotes = globalLabelData[INDEX(cart::Plane::HORIZONTAL, label, globalStep)];
+
+        if (verticalVotes > maxVotes) {
+            maxVotes = verticalVotes;
+            max = cart::Plane::VERTICAL;
+        }
+
+        if (horizontalVotes > maxVotes) {
+            max = cart::Plane::HORIZONTAL;
+        }
+
+        sharedPlaneAssignments[label] = max;
+    }
+
+    cg::thread_block tb = cg::this_thread_block();
+    tb.sync();
 
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
@@ -124,21 +188,7 @@ __global__ void classifyPlanes(const cv::cuda::PtrStepSz<cart::contour::label_t>
             }
 
             cart::contour::label_t label = labels[INDEX(pixelX + j, pixelY + i, labels.step / sizeof(cart::contour::label_t))];
-            int maxVotes = globalLabelData[INDEX(cart::Plane::UNKNOWN, label, globalStep)];
-            int max = cart::Plane::UNKNOWN;
-
-            int verticalVotes = globalLabelData[INDEX(cart::Plane::VERTICAL, label, globalStep)];
-            int horizontalVotes = globalLabelData[INDEX(cart::Plane::HORIZONTAL, label, globalStep)];
-
-            if (verticalVotes > maxVotes) {
-                maxVotes = verticalVotes;
-                max = cart::Plane::VERTICAL;
-            }
-
-            if (horizontalVotes > maxVotes) {
-                max = cart::Plane::HORIZONTAL;
-            }
-
+            int max = sharedPlaneAssignments[label];
             resultingPlanes[INDEX(pixelX + j, pixelY + i, planesRowStep)] = max;
         }
     }
@@ -177,6 +227,9 @@ SuperPixelDisparityPlaneSegmentationModule::SuperPixelDisparityPlaneSegmentation
     if (useTemporalSmoothing) {
         this->providesData.push_back(CARTSLAM_KEY_PLANES_UNSMOOTHED);
     }
+
+    CUDA_SAFE_CALL(this->logger, cudaFuncSetAttribute(performSuperPixelClassifications, cudaFuncAttributeMaxDynamicSharedMemorySize, MAX_SHARED_MEMORY));
+    CUDA_SAFE_CALL(this->logger, cudaFuncSetAttribute(classifyPlanes, cudaFuncAttributeMaxDynamicSharedMemorySize, MAX_SHARED_MEMORY));
 };
 
 system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& system, SystemRunData& data) {
@@ -278,12 +331,20 @@ system_data_t SuperPixelDisparityPlaneSegmentationModule::runInternal(System& sy
 
     cv::cuda::Stream cvStream = cv::cuda::StreamAccessor::wrapStream(stream);
 
-    cv::cuda::GpuMat globalLabelData(maxLabel + 1, 3, CV_32SC1);
+    cv::cuda::GpuMat globalLabelData(maxLabel + 1, 3, CV_16UC1);
     globalLabelData.setTo(0, cvStream);
     PlaneParameters params = this->planeParameterProvider->getPlaneParameters();
 
-    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, 0, stream>>>(*derivatives, *labels, planes, params, globalLabelData, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
-    classifyPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(*labels, globalLabelData, smoothed, maxLabel);
+    size_t sharedSize = (maxLabel + 1) * 3 * sizeof(uint16_t);
+    if (sharedSize > MAX_SHARED_MEMORY) {
+        LOG4CXX_WARN(this->logger, "Shared memory size " << sharedSize << " exceeds maximum " << MAX_SHARED_MEMORY);
+        throw std::runtime_error("Shared memory size exceeds maximum. Reduce image size or increase block size.");
+    }
+
+    size_t sharedSizeClassify = (maxLabel + 1) * sizeof(cart::Plane);
+
+    performSuperPixelClassifications<<<numBlocks, threadsPerBlock, sharedSize, stream>>>(*derivatives, *labels, planes, params, globalLabelData, devicePrevPlanes, devicePrevOpticalFlow, previousPlaneCount, maxLabel);
+    classifyPlanes<<<numBlocks, threadsPerBlock, sharedSizeClassify, stream>>>(*labels, globalLabelData, smoothed, maxLabel);
 
     if (data.id > 1 && this->useTemporalSmoothing) {
         CUDA_SAFE_CALL(this->logger, cudaFreeAsync(devicePrevPlanes, stream));

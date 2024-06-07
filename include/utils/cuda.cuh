@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cooperative_groups.h>
+#include <cooperative_groups/memcpy_async.h>
 #include <log4cxx/logger.h>
 
 #include "modules/disparity.hpp"
@@ -24,6 +26,8 @@ __device__ inline double atomicSub(double *address, double val) {
     return atomicAdd(address, -val);
 }
 
+namespace cg = cooperative_groups;
+
 namespace cart {
 
 /**
@@ -42,7 +46,7 @@ void copyColorWheelToDevice(cudaStream_t &stream);
 __device__ void assignColor(float fx, float fy, uint8_t *pix);
 
 template <typename T, int XBatch, int YBatch, bool Interpolate = true>
-__device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadding, int xPadding) {
+__device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, const int yPadding, const int xPadding) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -58,66 +62,65 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadd
     const size_t inputRowStep = values.step / sizeof(T);
     const size_t sharedRowStep = XBatch * blockDim.x;
 
-    for (int i = 0; i < YBatch; i++) {
-        for (int j = 0; j < XBatch; j++) {
-            if (pixelX + j >= width || pixelY + i >= height) {
-                continue;
-            }
+    cg::thread_block tb = cg::this_thread_block();
 
-            shared[SHARED_INDEX(sharedPixelX + j, sharedPixelY + i, xPadding, yPadding, sharedRowStep)] = values[INDEX(pixelX + j, pixelY + i, inputRowStep)];
-        }
+    const size_t startX = (blockIdx.x * blockDim.x) * XBatch;
+    const size_t startY = (blockIdx.y * blockDim.y) * YBatch;
+
+    for (int i = 0; i < (blockDim.y * YBatch); i++) {
+        cg::memcpy_async(tb, &shared[SHARED_INDEX(0, i, xPadding, yPadding, sharedRowStep)],
+                         &values[INDEX(startX, startY + i, inputRowStep)], blockDim.x * XBatch * sizeof(T));
     }
 
-    // TODO: Potentially make this expansion process its own kernel? It's a bit messy here
+    cg::wait(tb);
+
     if (yPadding > 0) {
-        if (threadIdx.y == 0) {
-            // Copy extra rows on top
-            for (int i = 1; i <= yPadding; i++) {
+        int localXStart = max(0, static_cast<int>(startX) - xPadding);
+        int localSharedXStart = localXStart - startX;
+        int xDim = min(static_cast<unsigned int>(width - localXStart), static_cast<unsigned int>(XBatch * blockDim.x + 2 * xPadding));
+
+        // Copy extra rows on top
+        for (int i = 1; i <= yPadding; i++) {
+            if (static_cast<int>(startY) - i >= 0) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, -i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(localXStart, startY - i, inputRowStep)], xDim * sizeof(T));
+            } else if constexpr (!Interpolate) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, -i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(localXStart, 0, inputRowStep)], xDim * sizeof(T));
+            } else if (threadIdx.y == 0) {
                 for (int j = 0; j < XBatch; j++) {
                     if (pixelX + j >= width) {
                         break;
                     }
 
-                    T value;
-                    if (pixelY - i >= 0) {
-                        value = values[INDEX(pixelX + j, pixelY - i, inputRowStep)];
-                    } else if (!Interpolate) {  // Should automatically be removed by the compiler, depending on the value
-                        value = values[INDEX(pixelX + j, 0, inputRowStep)];
-                    } else {
-                        // Perform basic 1D interpolation. This does mean some branching, but most likely all threads will
-                        // be doing the same thing so the divergence should be minimal
-                        T borderValue = values[INDEX(pixelX + j, 0, inputRowStep)];
-                        T nextValue = values[INDEX(pixelX + j, 1, inputRowStep)];
-                        value = borderValue + (nextValue - borderValue) * i;
-                    }
+                    T borderValue = shared[SHARED_INDEX(sharedPixelX + j, 0, xPadding, yPadding, sharedRowStep)];
+                    T nextValue = shared[SHARED_INDEX(sharedPixelY + j, i, xPadding, yPadding, sharedRowStep)];
+                    T value = borderValue + (nextValue - borderValue);
 
                     shared[SHARED_INDEX(sharedPixelX + j, sharedPixelY - i, xPadding, yPadding, sharedRowStep)] = value;
                 }
             }
         }
 
-        if (threadIdx.y == blockDim.y - 1) {
-            int maxSharedY = YBatch * blockDim.y;
+        int maxSharedY = YBatch * blockDim.y;
 
-            // Copy extra rows on bottom
-            for (int i = 0; i < yPadding; i++) {
+        // Copy extra rows on bottom
+        for (int i = 0; i < yPadding; i++) {
+            if ((startY + YBatch + i) < height) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, maxSharedY + i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(localXStart, startY + (YBatch * blockDim.y) + i, inputRowStep)], xDim * sizeof(T));
+            } else if constexpr (!Interpolate) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, maxSharedY + i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(localXStart, height - 1, inputRowStep)], xDim * sizeof(T));
+            } else if (threadIdx.y == blockDim.y - 1) {
                 for (int j = 0; j < XBatch; j++) {
                     if (pixelX + j >= width) {
                         break;
                     }
 
-                    T value;
-                    if (pixelY + YBatch + i < height) {
-                        value = values[INDEX(pixelX + j, pixelY + YBatch + i, inputRowStep)];
-                    } else if (!Interpolate) {
-                        value = values[INDEX(pixelX + j, height - 1, inputRowStep)];
-                    } else {
-                        // Perform basic 1D interpolation. This does mean some branching, but most likely all threads will
-                        // be doing the same thing so the divergence should be minimal
-                        T borderValue = values[INDEX(pixelX + j, height - 1, inputRowStep)];
-                        T prevValue = values[INDEX(pixelX + j, height - 2, inputRowStep)];
-                        value = borderValue + (borderValue - prevValue) * (i + 1);
-                    }
+                    T borderValue = shared[SHARED_INDEX(sharedPixelX + j, maxSharedY - 1, xPadding, yPadding, sharedRowStep)];
+                    T prevValue = shared[SHARED_INDEX(sharedPixelX + j, maxSharedY - 2 - i, xPadding, yPadding, sharedRowStep)];
+                    T value = borderValue + (borderValue - prevValue);
 
                     shared[SHARED_INDEX(sharedPixelX + j, maxSharedY + i, xPadding, yPadding, sharedRowStep)] = value;
                 }
@@ -126,62 +129,64 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, int yPadd
     }
 
     if (xPadding > 0) {
-        if (threadIdx.x == 0) {
-            // Copy extra columns on left
-            for (int i = 0; i < YBatch; i++) {
-                if (pixelY + i >= height) {
-                    break;
+        int yDim = min(static_cast<unsigned int>(height - startY), static_cast<unsigned int>(YBatch * blockDim.y));
+        // Copy extra columns on left
+        for (int i = 1; i <= xPadding; i++) {
+            if (static_cast<int>(startX) - i >= 0) {
+                for (int j = 0; j < yDim; j++) {
+                    cg::memcpy_async(tb, &shared[SHARED_INDEX(-i, j, xPadding, yPadding, sharedRowStep)],
+                                     &values[INDEX(startX - i, startY + j, inputRowStep)], sizeof(T));
                 }
-
-                for (int j = 1; j <= xPadding; j++) {
-                    T value;
-
-                    if (pixelX - j >= 0) {
-                        value = values[INDEX(pixelX - j, pixelY + i, inputRowStep)];
-                    } else if (!Interpolate) {
-                        value = values[INDEX(0, pixelY + i, inputRowStep)];
-                    } else {
-                        // Perform basic 1D interpolation. This does mean some branching, but most likely all threads will
-                        // be doing the same thing so the divergence should be minimal
-                        T borderValue = values[INDEX(0, pixelY + i, inputRowStep)];
-                        T nextValue = values[INDEX(1, pixelY + i, inputRowStep)];
-                        value = borderValue + (nextValue - borderValue) * j;
+            } else if constexpr (!Interpolate) {
+                for (int j = 0; j < yDim; j++) {
+                    cg::memcpy_async(tb, &shared[SHARED_INDEX(-i, j, xPadding, yPadding, sharedRowStep)],
+                                     &values[INDEX(0, startY + j, inputRowStep)], sizeof(T));
+                }
+            } else if (threadIdx.x == 0) {
+                for (int j = 0; j < YBatch; j++) {
+                    if (pixelY + j >= height) {
+                        break;
                     }
 
-                    shared[SHARED_INDEX(sharedPixelX - j, sharedPixelY + i, xPadding, yPadding, sharedRowStep)] = value;
+                    T borderValue = shared[SHARED_INDEX(0, j, xPadding, yPadding, sharedRowStep)];
+                    T nextValue = shared[SHARED_INDEX(i, j, xPadding, yPadding, sharedRowStep)];
+                    T value = borderValue + (nextValue - borderValue);
+
+                    shared[SHARED_INDEX(-i, j, xPadding, yPadding, sharedRowStep)] = value;
                 }
             }
         }
 
-        if (threadIdx.x == blockDim.x - 1) {
-            int maxSharedX = XBatch * blockDim.x;
-
-            // Copy extra columns on right
-            for (int i = 0; i < YBatch; i++) {
-                if (pixelY + i >= height) {
-                    break;
+        int maxSharedX = XBatch * blockDim.x;
+        // Copy extra columns on right
+        for (int i = 0; i < xPadding; i++) {
+            if ((startX + XBatch + i) < width) {
+                for (int j = 0; j < yDim; j++) {
+                    cg::memcpy_async(tb, &shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)],
+                                     &values[INDEX(startX + (XBatch * blockDim.x) + i, startY + j, inputRowStep)], sizeof(T));
                 }
-
-                for (int j = 0; j < xPadding; j++) {
-                    T value;
-
-                    if (pixelX + XBatch + j < width) {
-                        value = values[INDEX(pixelX + XBatch + j, pixelY + i, inputRowStep)];
-                    } else if (!Interpolate) {
-                        value = values[INDEX(width - 1, pixelY + i, inputRowStep)];
-                    } else {
-                        // Perform basic 1D interpolation. This does mean some branching, but most likely all threads will
-                        // be doing the same thing so the divergence should be minimal
-                        T borderValue = values[INDEX(width - 1, pixelY + i, inputRowStep)];
-                        T prevValue = values[INDEX(width - 2, pixelY + i, inputRowStep)];
-                        value = borderValue + (borderValue - prevValue) * (j + 1);
+            } else if constexpr (!Interpolate) {
+                for (int j = 0; j < yDim; j++) {
+                    cg::memcpy_async(tb, &shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)],
+                                     &values[INDEX(width - 1, startY + j, inputRowStep)], sizeof(T));
+                }
+            } else if (threadIdx.x == blockDim.x - 1) {
+                for (int j = 0; j < YBatch; j++) {
+                    if (pixelY + j >= height) {
+                        break;
                     }
 
-                    shared[SHARED_INDEX(maxSharedX + j, sharedPixelY + i, xPadding, yPadding, sharedRowStep)] = value;
+                    T borderValue = shared[SHARED_INDEX(maxSharedX - 1, j, xPadding, yPadding, sharedRowStep)];
+                    T prevValue = shared[SHARED_INDEX(maxSharedX - 2 - i, j, xPadding, yPadding, sharedRowStep)];
+                    T value = borderValue + (borderValue - prevValue);
+
+                    shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)] = value;
                 }
             }
         }
     }
+
+    cg::wait(tb);
 }
 
 inline void gpuAssert(log4cxx::LoggerPtr logger, cudaError_t code, const char *file, int line, bool abort = true) {

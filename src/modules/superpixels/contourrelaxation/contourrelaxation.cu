@@ -348,6 +348,7 @@ void ContourRelaxation::addFeature(boost::shared_ptr<IFeature> feature, const do
 
 void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::GpuMat& image, const cv::cuda::GpuMat& disparity, cv::OutputArray out_labelImage) {
     assert(this->labelImage.type() == cv::DataType<label_t>::type);
+    assert(image.size() == this->labelImage.size());
 
     cudaStream_t stream;
     CUDA_SAFE_CALL(this->logger, cudaStreamCreate(&stream));
@@ -398,7 +399,7 @@ void ContourRelaxation::relax(unsigned int const numIterations, const cv::cuda::
 
     unsigned int hostBorderCount;
     dim3 threadsPerBlockBorder(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
-    dim3 numBlocksBorder(ceil(labelImage.cols / (THREADS_PER_BLOCK_X * X_BATCH)), ceil(labelImage.rows / (THREADS_PER_BLOCK_Y * Y_BATCH)));
+    dim3 numBlocksBorder(ceil(static_cast<double>(labelImage.cols) / (THREADS_PER_BLOCK_X * X_BATCH)), ceil(static_cast<double>(labelImage.rows) / (THREADS_PER_BLOCK_Y * Y_BATCH)));
 
     for (size_t i = 0; i < numIterations; i++) {
         // Reset the border count

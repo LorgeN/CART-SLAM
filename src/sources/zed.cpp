@@ -17,8 +17,8 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure, cv::Siz
 
     params.input.setFromSVOFile(path.c_str());
     params.coordinate_units = sl::UNIT::METER;
-    params.depth_mode = sl::DEPTH_MODE::ULTRA;
-    params.depth_maximum_distance = 35.0f;
+    params.depth_mode = sl::DEPTH_MODE::QUALITY;
+    params.depth_maximum_distance = 40.0f;
 
 #ifdef CARTSLAM_DEBUG
     params.sdk_verbose = true;

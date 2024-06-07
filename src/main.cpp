@@ -30,20 +30,20 @@ int main(int argc, char* argv[]) {
 
     auto logger = cart::getLogger("main");
 
-    auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
-    // auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], kittiSeq);
+    //auto dataSource = boost::make_shared<cart::sources::ZEDDataSource>(argv[1], true);
+    auto dataSource = boost::make_shared<cart::sources::KITTIDataSource>(argv[1], kittiSeq);
     auto system = boost::make_shared<cart::System>(dataSource);
 
     LOG4CXX_INFO(logger, "Resolution: " << dataSource->getImageSize().width << "x" << dataSource->getImageSize().height);
 
-    system->addModule<cart::SuperPixelModule>(dataSource->getImageSize(), 18, 8, 16);
+    system->addModule<cart::SuperPixelModule>(dataSource->getImageSize(), 32, 12, 10, 64, 0.3, 0.3 / sqrt(2));
     system->addModule<cart::SuperPixelVisualizationModule>();
 
     system->addModule<cart::ImageOpticalFlowModule>(dataSource->getImageSize());
     //  system->addModule<cart::ImageOpticalFlowVisualizationModule>(dataSource->getImageSize());
 
-    system->addModule<cart::ZEDImageDisparityModule>();
-    // system->addModule<cart::ImageDisparityModule>(1, 256, 3, 2, 1);
+    // system->addModule<cart::ZEDImageDisparityModule>();
+    system->addModule<cart::ImageDisparityModule>(1, 256, 3, 2, 1);
     // system->addModule<cart::ImageDisparityVisualizationModule>();
 
     system->addModule<cart::ImageDisparityDerivativeModule>();
@@ -52,11 +52,11 @@ int main(int argc, char* argv[]) {
     system->addModule<cart::DepthModule>();
     // system->addModule<cart::DepthVisualizationModule>();
 
-    auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 30), std::make_pair(-3, 3));
-    // auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
+    // auto provider = boost::make_shared<cart::StaticPlaneParameterProvider>(3, 0, std::make_pair(3, 30), std::make_pair(-3, 3));
+    auto provider = boost::make_shared<cart::HistogramPeakPlaneParameterProvider>();
     // system->addModule<cart::DisparityPlaneSegmentationModule>(provider, 30, 20, true);
     system->addModule<cart::SuperPixelDisparityPlaneSegmentationModule>(provider, 10, 30, true);
-    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(false, true);
+    system->addModule<cart::DisparityPlaneSegmentationVisualizationModule>(true, true);
     system->addModule<cart::PlaneSegmentationBEVVisualizationModule>();
 
     // system->addModule<cart::SuperPixelPlaneFitModule>();
@@ -64,14 +64,18 @@ int main(int argc, char* argv[]) {
     // system.addModule(new cart::ImageFeatureDetectorModule(cart::detectOrbFeatures));
     // system.addModule(new cart::ImageFeatureVisualizationModule());
 
-    if (!dataSource->isNextReady()) {
+    if (dataSource->isFinished()) {
         LOG4CXX_WARN(cart::getLogger("main"), "The provided data source has no data. Exiting.");
         return 1;
     }
 
     boost::future<void> last;
 
-    while (dataSource->isNextReady()) {
+    while (!dataSource->isFinished()) {
+        if (!dataSource->isNextReady()) {
+            continue;
+        }
+
         last = system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();

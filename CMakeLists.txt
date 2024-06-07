@@ -52,6 +52,7 @@ add_executable( cart_slam
     src/utils/cuda.cu
     src/utils/plane.cpp
     src/utils/random.cpp
+    src/utils/sanity_check.cu
 )
 
 # Tells NVCC to generate device code for linking later

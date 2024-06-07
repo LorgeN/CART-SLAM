@@ -404,7 +404,7 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     std::vector<util::Peak> peaks = util::findPeaks(histogram);
 
     if (peaks.size() < 2) {
-        LOG4CXX_DEBUG(logger, "Not enough peaks found");
+        LOG4CXX_WARN(logger, "Histogram peak provider: Not enough peaks found");
         return;
     }
 
@@ -425,11 +425,16 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
         }
     }
 
-    LOG4CXX_DEBUG(logger, "Peaks: " << peaks[0].born << ", " << peaks[1].born << ", Min: " << minIndex);
+    LOG4CXX_DEBUG(logger, "Histogram peak provider: Peaks: " << peaks[0].born << ", " << peaks[1].born << ", Min: " << minIndex);
 
     // Set variance as distance from peak to minimum
     int verticalMinDist = abs(minIndex - peaks[0].born);
     int horizontalMinDist = abs(minIndex - peaks[1].born);
+
+    if (verticalMinDist == 0 || horizontalMinDist == 0) {
+        LOG4CXX_WARN(logger, "Histogram peak provider: Vertical or horizontal min distance is 0");
+        return;
+    }
 
     int verticalDerivative = (histogram.at<int>(peaks[0].born) - histogram.at<int>(minIndex)) / verticalMinDist;
     int horizontalDerivative = (histogram.at<int>(peaks[1].born) - histogram.at<int>(minIndex)) / horizontalMinDist;
@@ -440,8 +445,8 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     this->verticalRange = std::make_pair(peaks[0].born - verticalWidth - 128, minIndex - 127);
     this->horizontalRange = std::make_pair(minIndex - 127, peaks[1].born + horizontalWidth - 127);
 
-    LOG4CXX_DEBUG(logger, "Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
-    LOG4CXX_DEBUG(logger, "Vertical range: " << this->verticalRange.first << " - " << this->verticalRange.second);
-    LOG4CXX_DEBUG(logger, "Horizontal range: " << this->horizontalRange.first << " - " << this->horizontalRange.second);
+    LOG4CXX_DEBUG(logger, "Histogram peak provider: Vertical center: " << this->verticalCenter << ", Horizontal center: " << this->horizontalCenter);
+    LOG4CXX_DEBUG(logger, "Histogram peak provider: Vertical range: " << this->verticalRange.first << " - " << this->verticalRange.second);
+    LOG4CXX_DEBUG(logger, "Histogram peak provider: Horizontal range: " << this->horizontalRange.first << " - " << this->horizontalRange.second);
 }
 }  // namespace cart
