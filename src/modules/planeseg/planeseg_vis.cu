@@ -66,6 +66,9 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
     size_t depthRowStep = depth.step / sizeof(float);
     size_t planesRowStep = planes.step / sizeof(uint8_t);
 
+    // Make sure we use the same scale along the x and y axis
+    const float maxWidth = (maxDepth / output.rows) * (output.cols / 2);
+
     for (int i = 0; i < Y_BATCH; i++) {
         for (int j = 0; j < X_BATCH; j++) {
             if (pixelX + j >= depth.cols || pixelY + i >= depth.rows) {
@@ -80,6 +83,7 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
 
             // depth is XYZ
             float x = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 0, depthRowStep)];
+            float y = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 1, depthRowStep)];
             float z = depth[INDEX_CH(pixelX + j, pixelY + i, 3, 2, depthRowStep)];
             if (z > maxDepth || z < 0.0f || x < -10.0f || x > 10.0f) {
                 continue;
@@ -88,14 +92,16 @@ __global__ void paintBEVPlanes(cv::cuda::PtrStepSz<uint8_t> planes, cv::cuda::Pt
             // Normalize depth to 0 - rows (height) of the output image
             int row = output.rows - static_cast<int>(round((z / maxDepth) * output.rows)) - 1;
 
-            // Normalize x to 0 - cols (width) of the output image. Assume a range of -10 to 10
-            int column = static_cast<int>(round(((x + 10.0f) / 20.0f) * output.cols));
+            int column = static_cast<int>(round((x / maxWidth) * output.cols)) + (output.cols / 2);
+
+            int targetChannel = y > -0.5f ? 0 : 1;
 
             // This will result in race conditions, but it's fine for visualization. The idea is that
             // taller vertical planes will be more visible.
-            uint8_t curr = output[INDEX(column, row, outputRowStep)];
-            curr -= min(curr, static_cast<int>(ceil(2 * z)));
-            output[INDEX(column, row, outputRowStep)] = curr;
+            uint8_t curr = output[INDEX_BGR(column, row, targetChannel, outputRowStep)];
+            curr -= min(curr, static_cast<int>(ceil(1 * (z / 3 + 1))));
+            output[INDEX_BGR(column, row, targetChannel, outputRowStep)] = curr;
+            output[INDEX_BGR(column, row, 2, outputRowStep)] = curr;
         }
     }
 }
@@ -212,7 +218,7 @@ bool PlaneSegmentationBEVVisualizationModule::updateImage(System& system, System
         return false;
     }
 
-    cv::cuda::GpuMat output(300, 600, CV_8UC1);
+    cv::cuda::GpuMat output(300, 600, CV_8UC3);
 
     cv::cuda::Stream cvStream;
     cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
@@ -221,8 +227,8 @@ bool PlaneSegmentationBEVVisualizationModule::updateImage(System& system, System
     dim3 numBlocks((planes->cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
                    (planes->rows + (threadsPerBlock.y * Y_BATCH - 1)) / (threadsPerBlock.y * Y_BATCH));
 
-    output.setTo(255, cvStream);
-    paintBEVPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(*planes, *depth, output, 25.0);
+    output.setTo(cv::Scalar(255, 255, 255), cvStream);
+    paintBEVPlanes<<<numBlocks, threadsPerBlock, 0, stream>>>(*planes, *depth, output, 20.0);
     cv::cuda::resize(output, output, cv::Size(1200, 600), 0, 0, cv::INTER_NEAREST, cvStream);
 
     output.download(image, cvStream);
