@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
 
     LOG4CXX_INFO(logger, "Resolution: " << dataSource->getImageSize().width << "x" << dataSource->getImageSize().height);
 
-    system->addModule<cart::SuperPixelModule>(dataSource->getImageSize(), 32, 12, 10, 64, 0.3, 0.3 / sqrt(2));
+    system->addModule<cart::SuperPixelModule>(dataSource->getImageSize(), 24, 8, 12, 64);
     system->addModule<cart::SuperPixelVisualizationModule>();
 
     system->addModule<cart::ImageOpticalFlowModule>(dataSource->getImageSize());

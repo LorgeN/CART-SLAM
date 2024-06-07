@@ -26,7 +26,7 @@ typedef int16_t derivative_t;
 
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(int minDisparity = 1, int numDisparities = 256, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
+    ImageDisparityModule(int minDisparity = 0, int numDisparities = 256, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
         : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations) {
         this->providesData.push_back(CARTSLAM_KEY_DISPARITY);
 
