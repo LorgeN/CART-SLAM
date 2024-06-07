@@ -80,17 +80,6 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     cv::cuda::cvtColor(getReferenceImage(data.dataElement), image, cv::COLOR_BGR2YCrCb, 0, stream);
 #endif
 
-    // We do a reset every at resetIterations, to prevent the superpixels from becoming very messy
-    // over time. This is especially important when the camera is moving, as the superpixels will
-    // drift over time to weird shapes.
-    if (data.id % this->resetIterations == 0) {
-        // Reset the labels every resetIterations
-        cv::cuda::GpuMat initialLabelImage;
-        contour::createBlockInitialization(image.size(), this->blockSize, this->blockSize, initialLabelImage, this->maxLabelId);
-
-        this->contourRelaxation->setLabelImage(initialLabelImage, this->maxLabelId);
-    }
-
     stream.waitForCompletion();
 
     auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
@@ -102,6 +91,21 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
     {
         // Lock the mutex to protect the contour relaxation object, which is not thread safe
         boost::lock_guard<boost::mutex> lock(this->mutex);
+
+        // We do a reset every at resetIterations, to prevent the superpixels from becoming very messy
+        // over time. This is especially important when the camera is moving, as the superpixels will
+        // drift over time to weird shapes. This has to be within the critical section so we dont modify
+        // the object while it is being used.
+        if (data.id % this->resetIterations == 0) {
+            // Reset the labels every resetIterations
+            cv::cuda::GpuMat initialLabelImage;
+            contour::createBlockInitialization(image.size(), this->blockSize, this->blockSize, initialLabelImage, this->maxLabelId, stream);
+
+            stream.waitForCompletion();
+
+            this->contourRelaxation->setLabelImage(initialLabelImage, this->maxLabelId);
+        }
+
         this->contourRelaxation->relax(numIterations, image, *disparityDerivative, relaxedLabelImage);
     }
 
