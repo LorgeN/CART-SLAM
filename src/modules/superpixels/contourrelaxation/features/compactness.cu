@@ -1,8 +1,10 @@
 #include "modules/superpixels/contourrelaxation/features/compactness.cuh"
 
+#define PROGRESSIVE_PIXEL_GROUPING 24
+
 namespace cart::contour {
 
-__device__ CUDACompactnessFeature::CUDACompactnessFeature(label_t maxLabelId) : maxLabelId(maxLabelId) {
+__device__ CUDACompactnessFeature::CUDACompactnessFeature(label_t maxLabelId, double progressiveCost) : maxLabelId(maxLabelId), progressiveCost(progressiveCost) {
     labelStatisticsPosX = new LabelStatisticsGauss[maxLabelId + 1]();
     labelStatisticsPosY = new LabelStatisticsGauss[maxLabelId + 1]();
 }
@@ -12,16 +14,16 @@ __device__ CUDACompactnessFeature::~CUDACompactnessFeature() {
     delete[] labelStatisticsPosY;
 }
 
-__global__ void createFeatureInstance(CUDAFeature** cudaFeature, const label_t maxLabelId) {
+__global__ void createFeatureInstance(CUDAFeature** cudaFeature, const label_t maxLabelId, const double progressiveCost) {
     // For virtual functions to work, we need to execute this on the device.
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        (*cudaFeature) = new CUDACompactnessFeature(maxLabelId);
+        (*cudaFeature) = new CUDACompactnessFeature(maxLabelId, progressiveCost);
     }
 }
 
 void CompactnessFeature::initializeCUDAFeature(CUDAFeature**& cudaFeature, const label_t maxLabelId, const cv::cuda::Stream& cvStream) {
     cudaStream_t stream = cv::cuda::StreamAccessor::getStream(cvStream);
-    createFeatureInstance<<<1, 1, 0, stream>>>(cudaFeature, maxLabelId);
+    createFeatureInstance<<<1, 1, 0, stream>>>(cudaFeature, maxLabelId, this->progressiveCost);
     CUDA_SAFE_CALL(this->logger, cudaPeekAtLastError());
 }
 
@@ -173,6 +175,14 @@ __device__ double CUDACompactnessFeature::calculateCost(const CRPoint curPixelCo
 
         // Add the cost of the current region.
         featureCost += curLabelStatsPosX->featureCost + curLabelStatsPosY->featureCost;
+    }
+
+    // Increase the cost for the pixels that are at the top of the image, as these should
+    // naturally be more compact.
+    if (this->progressiveCost > 1.0) {
+        // Note that y is the row and starts at 0 at the top of the image. Note that we add 1 to the
+        // division to avoid division by zero.
+        featureCost *= (1.0 + (this->progressiveCost / (curPixelCoords.y / PROGRESSIVE_PIXEL_GROUPING + 1))) / this->progressiveCost;
     }
 
     return featureCost;

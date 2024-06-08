@@ -30,6 +30,7 @@ class CUDACompactnessFeature : public CUDAFeature {
     LabelStatisticsGauss* labelStatisticsPosX;
     LabelStatisticsGauss* labelStatisticsPosY;
     label_t maxLabelId;
+    double progressiveCost;
 
     /**
      * @brief Update label statistics to reflect a label change of the given pixel.
@@ -42,7 +43,7 @@ class CUDACompactnessFeature : public CUDAFeature {
                                      LabelStatisticsGauss& labelStatsOldLabelPosY, LabelStatisticsGauss& labelStatsNewLabelPosY) const;
 
    public:
-    __device__ CUDACompactnessFeature(label_t maxLabelId);
+    __device__ CUDACompactnessFeature(label_t maxLabelId, double progressiveCost);
 
     __device__ ~CUDACompactnessFeature() override;
 
@@ -56,8 +57,11 @@ class CUDACompactnessFeature : public CUDAFeature {
 };
 
 class CompactnessFeature : public IFeature {
+   private:
+    const double progressiveCost;
+
    public:
-    CompactnessFeature() : IFeature("Compactness") {}
+    CompactnessFeature(const double progressiveCost = 1.5) : IFeature("Compactness"), progressiveCost(progressiveCost) {}
 
     void initializeCUDAFeature(CUDAFeature**& cudaFeature, const label_t maxLabelId, const cv::cuda::Stream& stream = cv::cuda::Stream::Null()) override;
 };

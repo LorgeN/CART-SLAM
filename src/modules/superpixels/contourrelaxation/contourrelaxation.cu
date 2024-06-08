@@ -338,7 +338,7 @@ void ContourRelaxation::setLabelImage(const cv::cuda::GpuMat& labelImage, const 
 }
 
 void ContourRelaxation::addFeature(boost::shared_ptr<IFeature> feature, const double weight) {
-    FeatureContainer container = {
+    feature_container_t container = {
         .feature = feature,
         .weight = weight,
     };

@@ -13,7 +13,7 @@ namespace cart::contour {
 /**
  * @brief Struct for storing a feature and its weight.
  */
-struct FeatureContainer {
+struct feature_container_t {
     boost::shared_ptr<IFeature> feature;
     double weight;
 };
@@ -24,7 +24,7 @@ struct FeatureContainer {
  */
 class ContourRelaxation {
    private:
-    std::vector<FeatureContainer> features;
+    std::vector<feature_container_t> features;
     log4cxx::LoggerPtr logger;
 
     /**
@@ -46,8 +46,8 @@ class ContourRelaxation {
      * @param directCliqueCost the cost of a direct clique
      * @param diagonalCliqueCost the cost of a diagonal clique
      */
-    ContourRelaxation(const cv::cuda::GpuMat initialLabelImage, const label_t maxLabelId, const double directCliqueCost,
-                      const double diagonalCliqueCost);
+    ContourRelaxation(const cv::cuda::GpuMat initialLabelImage, const label_t maxLabelId, const double directCliqueCost = 0.3,
+                      const double diagonalCliqueCost = 0.3 / sqrt(2));
 
     void setLabelImage(const cv::cuda::GpuMat& labelImage, const label_t maxLabelId);
 
