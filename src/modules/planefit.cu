@@ -10,6 +10,8 @@
 #define X_BATCH 4
 #define Y_BATCH 4
 
+#define CALC_COLOR(ch) std::min(static_cast<uint8_t>(255), static_cast<uint8_t>(std::abs(normal[ch]) / 2.0 * 255))
+
 namespace cg = cooperative_groups;
 
 struct __align__(8) label_statistics_t {
@@ -22,21 +24,6 @@ __global__ void calculateRegionDistance(
     const cv::cuda::PtrStepSz<cv::Point3f> depth,
     const cv::Vec4d plane,
     label_statistics_t* labelStats) {
-    /*
-extern __shared__ label_statistics_t stats[];
-
-cg::thread_block tb = cg::this_thread_block();
-
-int x = blockIdx.x * blockDim.x + threadIdx.x;
-int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-int pixelX = x * X_BATCH;
-int pixelY = y * Y_BATCH;
-*/
-
-    // Set the shared memory to zero
-
-    // TODO: Implement this function
 }
 
 namespace cart {
@@ -47,7 +34,6 @@ system_data_t SuperPixelPlaneFitModule::runInternal(System& system, SystemRunDat
     const auto depth = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DEPTH);
 
     std::vector<std::vector<cv::Point3d>> superpixelPoints(*maxLabel + 1);
-    util::RandomSampler sampler(*maxLabel);
 
     cv::Mat superpixelsHost;
     cv::Mat depthHost;
@@ -58,11 +44,66 @@ system_data_t SuperPixelPlaneFitModule::runInternal(System& system, SystemRunDat
         for (int x = 0; x < superpixelsHost.cols; x++) {
             const auto label = superpixelsHost.at<contour::label_t>(y, x);
             const auto point = depthHost.at<cv::Point3f>(y, x);
+
+            if (!std::isfinite(point.z)) {
+                continue;
+            }
+
             const cv::Point3d point3d(point.x, point.y, point.z);
             superpixelPoints[label].push_back(point3d);
         }
     }
 
-    return MODULE_NO_RETURN_VALUE;
+    std::vector<cv::Vec4d> planes(*maxLabel + 1);
+
+#pragma omp parallel for schedule(static)
+    for (contour::label_t label = 0; label <= *maxLabel; label++) {
+        auto inliers = superpixelPoints[label];
+        if (inliers.size() < 4) {
+            planes[label] = cv::Vec4d(0, 0, 0, 0);
+            continue;
+        }
+
+        planes[label] = util::segmentPlane(inliers);
+    }
+
+    return MODULE_RETURN_SHARED(CARTSLAM_KEY_PLANES_EQ, std::vector<cv::Vec4d>, boost::move(planes));
+}
+
+bool SuperPixelPlaneFitVisualizationModule::updateImage(System& system, SystemRunData& data, cv::Mat& image) {
+    const auto maxLabel = data.getData<contour::label_t>(CARTSLAM_KEY_SUPERPIXELS_MAX_LABEL);
+    const auto superpixels = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_SUPERPIXELS);
+    const auto planesFit = data.getData<std::vector<cv::Vec4d>>(CARTSLAM_KEY_PLANES_EQ);
+
+    cv::Mat superpixelsHost;
+    superpixels->download(superpixelsHost);
+
+    cv::Mat vectorColoring(superpixelsHost.size(), CV_8UC3);
+
+    for (int y = 0; y < superpixelsHost.rows; y++) {
+        for (int x = 0; x < superpixelsHost.cols; x++) {
+            const auto label = superpixelsHost.at<contour::label_t>(y, x);
+
+            const auto plane = (*planesFit)[label];
+
+            if (plane[0] == 0 && plane[1] == 0 && plane[2] == 0) {
+                continue;
+            }
+
+            auto normal = cv::Vec3d(plane[0], plane[1], plane[2]);
+            normal = normal / cv::norm(normal);
+
+            const auto color = cv::Vec3b(CALC_COLOR(0), CALC_COLOR(1), CALC_COLOR(2));
+            vectorColoring.at<cv::Vec3b>(y, x) = color;
+        }
+    }
+
+    auto referenceImage = getReferenceImage(data.dataElement);
+
+    cv::Mat imageHost;
+    referenceImage.download(imageHost);
+
+    cv::vconcat(vectorColoring, imageHost, image);
+    return true;
 }
 }  // namespace cart

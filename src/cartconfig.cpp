@@ -197,6 +197,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
             case hash("planefit"):
                 system->addModule<cart::SuperPixelPlaneFitModule>();
                 break;
+            case hash("planefit_visualization"):
+                system->addModule<cart::SuperPixelPlaneFitVisualizationModule>();
+                break;
             case hash("disparity_planeseg"): {
                 const auto parameterProvider = readParameterProvider(moduleConfig["parameter_provider"]);
                 system->addModule<cart::DisparityPlaneSegmentationModule>(
