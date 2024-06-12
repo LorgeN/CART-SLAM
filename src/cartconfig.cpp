@@ -1,5 +1,7 @@
 #include "cartconfig.hpp"
 
+#ifdef CARTSLAM_JSON
+
 #include <boost/shared_ptr.hpp>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -21,8 +23,11 @@
 #define CART_CONFIG_KEY_DATA_SOURCE "data_source"
 #define CART_CONFIG_KEY_MODULES "modules"
 
+#endif
+
 namespace cart::config {
 
+#ifdef CARTSLAM_JSON
 constexpr uint32_t hash(const std::string_view data) noexcept {
     uint32_t hash = 5385;
     for (const auto &e : data) hash = ((hash << 5) + hash) + e;
@@ -74,7 +79,7 @@ inline boost::shared_ptr<PlaneParameterProvider> readParameterProvider(const nlo
 }
 
 boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
-    std::ifstream file(path);
+    std::ifstream file(cart::util::resolvePath(path));
 
     if (!file.is_open()) {
         throw std::runtime_error("Could not open file " + path + ": " + strerror(errno));
@@ -138,6 +143,7 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                     get(moduleConfig, "direct_clique_cost", 0.25),
                     get(moduleConfig, "diagonal_clique_cost", 0.25 / sqrt(2)),
                     get(moduleConfig, "compactness_weight", 0.05),
+                    get(moduleConfig, "progressive_compactness_cost", 1.0),
                     get(moduleConfig, "image_weight", 1.0),
                     get(moduleConfig, "disparity_weight", 1.25));
                 break;
@@ -222,4 +228,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
 
     return system;
 }
+#else
+boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
+    throw std::runtime_error("JSON configuration not available.");
+}
+#endif
 }  // namespace cart::config

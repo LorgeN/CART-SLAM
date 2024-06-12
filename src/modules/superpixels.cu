@@ -25,13 +25,15 @@ SuperPixelModule::SuperPixelModule(
     const double directCliqueCost,
     const double diagonalCliqueCost,
     const double compactnessWeight,
+    const double progressiveCompactnessCost,
     const double imageWeight,
     const double disparityWeight)
     : SyncWrapperSystemModule("SuperPixelDetect"),
       initialIterations(initialIterations),
       iterations(iterations),
       resetIterations(resetIterations),
-      blockSize(blockSize) {
+      blockSize(blockSize),
+      requiresDisparityDerivative(disparityWeight > 0) {
     if (blockSize < 1) {
         throw std::invalid_argument("blockSize must be more than 1");
     }
@@ -56,7 +58,7 @@ SuperPixelModule::SuperPixelModule(
 
     this->contourRelaxation = boost::make_shared<contour::ContourRelaxation>(initialLabelImage, this->maxLabelId, directCliqueCost, diagonalCliqueCost);
 
-    this->contourRelaxation->addFeature<contour::CompactnessFeature>(compactnessWeight);
+    this->contourRelaxation->addFeature<contour::CompactnessFeature>(compactnessWeight, progressiveCompactnessCost);
     this->contourRelaxation->addFeature<contour::DisparityFeature>(disparityWeight);
 
 #ifdef CARTSLAM_IMAGE_MAKE_GRAYSCALE
@@ -82,7 +84,11 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
 
     stream.waitForCompletion();
 
-    auto disparityDerivative = data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
+    cv::cuda::GpuMat disparityDerivative;
+
+    if (this->requiresDisparityDerivative) {
+        disparityDerivative = *data.getData<cv::cuda::GpuMat>(CARTSLAM_KEY_DISPARITY_DERIVATIVE);
+    }
 
     const unsigned int numIterations = (data.id == 1 || data.id % this->resetIterations == 0) ? this->initialIterations : this->iterations;
 
@@ -106,7 +112,7 @@ system_data_t SuperPixelModule::runInternal(System &system, SystemRunData &data)
             this->contourRelaxation->setLabelImage(initialLabelImage, this->maxLabelId);
         }
 
-        this->contourRelaxation->relax(numIterations, image, *disparityDerivative, relaxedLabelImage);
+        this->contourRelaxation->relax(numIterations, image, disparityDerivative, relaxedLabelImage);
     }
 
     return MODULE_RETURN_ALL(

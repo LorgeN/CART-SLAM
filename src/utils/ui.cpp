@@ -1,5 +1,6 @@
 #include "utils/ui.hpp"
 
+#include <filesystem>
 #include <random>
 
 namespace cart {
@@ -8,7 +9,7 @@ std::vector<cv::Point2i> getRandomPoints(const int count, const cv::Size &size) 
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    
+
     std::uniform_int_distribution<int> xDist(0, size.width - 1);
     std::uniform_int_distribution<int> yDist(0, size.height - 1);
 
@@ -35,6 +36,13 @@ ImageThread::ImageThread() {
 
     LOG4CXX_DEBUG(this->logger, "Starting thread");
     this->thread = boost::thread(boost::bind(&ImageThread::run, this));
+
+#ifdef CARTSLAM_SAVE_SAMPLES
+    // Check if samples folder exists
+    if (!std::filesystem::exists("samples")) {
+        std::filesystem::create_directory("samples");
+    }
+#endif
 }
 
 void ImageProvider::setImage(const cv::Mat &image) {
@@ -42,6 +50,14 @@ void ImageProvider::setImage(const cv::Mat &image) {
 }
 
 void ImageProvider::setImageIfLater(const cv::Mat &image, const uint32_t frameIndex) {
+#ifdef CARTSLAM_SAVE_SAMPLES
+    if (frameIndex % 30 == 0) {
+        std::stringstream ss;
+        ss << "samples/sample_" << this->name << "_" << frameIndex << ".png";
+        cv::imwrite(ss.str(), image);
+    }
+#endif
+
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     // If the frame index is less than the current frame index, ignore
     // Do not strictly require higher frame index, so we can reuse the same as in #setImage

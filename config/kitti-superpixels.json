@@ -1,0 +1,20 @@
+{
+    "data_source": {
+        "type": "kitti",
+        "path": "~/Datasets/KITTI/dataset",
+        "sequence": 0
+    },
+    "modules": [
+        {
+            "type": "superpixels",
+            "initial_iterations": 24,
+            "iterations": 12,
+            "block_size": 10,
+            "reset_iterations": 64,
+            "disparity_weight": 0.0
+        },
+        {
+            "type": "superpixels_visualization"
+        }
+    ]
+}

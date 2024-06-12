@@ -23,6 +23,7 @@ class SuperPixelModule : public SyncWrapperSystemModule {
         const double directCliqueCost = 0.25,
         const double diagonalCliqueCost = 0.25 / sqrt(2),
         const double compactnessWeight = 0.05,
+        const double progressiveCompactnessCost = 1.0, // Disabled by default
         const double imageWeight = 1.0,
         const double disparityWeight = 1.25);
 
@@ -35,6 +36,7 @@ class SuperPixelModule : public SyncWrapperSystemModule {
     const unsigned int iterations;
     const unsigned int resetIterations;
     const unsigned int blockSize;
+    const bool requiresDisparityDerivative;
     contour::label_t maxLabelId;
 };
 

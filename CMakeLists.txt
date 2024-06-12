@@ -60,15 +60,24 @@ add_executable( cart_slam
 # Tells NVCC to generate device code for linking later
 set_target_properties( cart_slam PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
+OPTION(ENABLE_TIMING "Generate a timing file for each run" OFF)
+OPTION(ENABLE_SAVE_SAMPLES "Save samples of visualizations to disk" OFF)
+
+if (ENABLE_TIMING)
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
+endif()
+
+if (ENABLE_SAVE_SAMPLES)
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_SAVE_SAMPLES )
+endif()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
-    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING ) 
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG ) 
     target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo -Xcompiler=-fopenmp> ) 
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_DEBUG )
-    target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
     target_compile_options( cart_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo -Xcompiler=-fopenmp> ) 
 endif()
 

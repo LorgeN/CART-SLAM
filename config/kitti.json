@@ -9,7 +9,7 @@
             "type": "superpixels",
             "initial_iterations": 24,
             "iterations": 8,
-            "block_size": 16,
+            "block_size": 12,
             "reset_iterations": 64
         },
         {
