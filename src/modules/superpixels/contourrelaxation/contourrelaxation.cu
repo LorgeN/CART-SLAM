@@ -198,7 +198,7 @@ __global__ void findBorderPixels(cv::cuda::PtrStepSz<cart::contour::label_t> lab
             }
 
             if (border) {
-                borderPixelsShared[atomicAdd(&borderCountShared, 1)] = {
+                borderPixelsShared[atomicAdd_block(&borderCountShared, 1)] = {
                     .x = pixelX + j,
                     .y = pixelY + i};
             }

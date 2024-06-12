@@ -1,0 +1,17 @@
+{
+    "data_source": {
+        "type": "kitti",
+        "path": "~/Datasets/KITTI/dataset",
+        "sequence": 1
+    },
+    "modules": [
+        {
+            "type": "disparity",
+            "smoothing_radius": 3,
+            "smoothing_iterations": 1
+        },
+        {
+            "type": "disparity_visualization"
+        }
+    ]
+}

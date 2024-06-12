@@ -14,10 +14,7 @@
 #define CARTSLAM_KEY_DISPARITY_DERIVATIVE "disparity_derivative"
 #define CARTSLAM_KEY_DISPARITY_DERIVATIVE_HISTOGRAM "disparity_derivative_histogram"
 
-#define CARTSLAM_DISPARITY_INVALID -1
-
-#define SGM_P1(blockSize) (2 * blockSize * blockSize)
-#define SGM_P2(blockSize) (8 * blockSize * blockSize)
+#define CARTSLAM_DISPARITY_INVALID (-32768)
 
 namespace cart {
 
@@ -26,14 +23,16 @@ typedef int16_t derivative_t;
 
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(int minDisparity = 0, int numDisparities = 256, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
-        : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations) {
+    ImageDisparityModule(const cv::Size imageRes, int minDisparity = 0, int numDisparities = 256, int blockSize = 5, int smoothingRadius = -1, int smoothingIterations = 5)
+        : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations), 
+        minDisparity((minDisparity + 4) * 16), maxDisparity(imageRes.width) {
         this->providesData.push_back(CARTSLAM_KEY_DISPARITY);
 
-        this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities, SGM_P1(blockSize), SGM_P2(blockSize), 5);
+        this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities);
+        this->stereoSGM->setUniquenessRatio(5);
         this->stereoSGM->setBlockSize(blockSize);
-        this->stereoSGM->setSpeckleWindowSize(100);
-        this->stereoSGM->setSpeckleRange(16);
+        this->stereoSGM->setSpeckleWindowSize(64);
+        this->stereoSGM->setSpeckleRange(2);
     };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
@@ -42,6 +41,8 @@ class ImageDisparityModule : public SyncWrapperSystemModule {
     cv::Ptr<cv::cuda::StereoSGM> stereoSGM;
     int smoothingRadius;
     int smoothingIterations;
+    const int minDisparity;
+    const int maxDisparity;
 };
 
 #ifdef CARTSLAM_ZED

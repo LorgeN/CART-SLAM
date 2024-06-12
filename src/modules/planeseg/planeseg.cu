@@ -121,7 +121,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
 
             // Only update histogram if the value is within the range of a signed char
             if (derivative >= -128 && derivative <= 127 && valid) {
-                atomicAdd(&localHistogram[derivative + 128], 1);
+                atomicAdd_block(&localHistogram[derivative + 128], 1);
             }
         }
     }

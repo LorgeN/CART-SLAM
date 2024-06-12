@@ -14,7 +14,7 @@
 
 #define LOCAL_INDEX(x, y) SHARED_INDEX(sharedPixelX + x, sharedPixelY + y, radius - 1, radius - 1, sharedRowStep)
 
-__global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> disparity, int radius, int width, int height, int iterations) {
+__global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> disparity, int radius, int width, int height, int iterations, int minDisparity, int maxDisparity) {
     extern __shared__ cart::disparity_t shared[];
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -30,14 +30,15 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
 
     cart::copyToShared<cart::disparity_t, X_BATCH, Y_BATCH>(shared, disparity, radius - 1, radius - 1);
 
+    const unsigned int minCount = radius * radius + 1;  // Requires about 1 fourth of the pixels to be valid
+
     __syncthreads();
 
     // Average neighboring pixels
     for (int i = 0; i < iterations; i++) {
         for (int j = 0; j < X_BATCH; j++) {
             for (int i = 0; i < Y_BATCH; i++) {
-                cart::disparity_t current = shared[LOCAL_INDEX(j, i)];
-                if (current > 0 && current < 16 * 256) {
+                if (pixelX + j >= width || pixelY + i >= height) {
                     continue;
                 }
 
@@ -48,15 +49,17 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
                     for (int l = -radius + 1; l < radius; l++) {
                         cart::disparity_t value = shared[LOCAL_INDEX(j + k, i + l)];
 
-                        if (value > 0 && value < 16 * 256) {
+                        if (value > minDisparity && value < maxDisparity) {
                             sum += value;
                             count++;
                         }
                     }
                 }
 
-                if (count > 0) {
+                if (count > minCount) {
                     shared[LOCAL_INDEX(j, i)] = sum / count;
+                } else {
+                    shared[LOCAL_INDEX(j, i)] = CARTSLAM_DISPARITY_INVALID;
                 }
             }
         }
@@ -79,15 +82,9 @@ __global__ void interpolateKernel(cv::cuda::PtrStepSz<cart::disparity_t> dispari
 }
 
 namespace cart::disparity {
-void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cuda::Stream& stream, int radius, int iterations) {
-    LOG4CXX_DEBUG(logger, "Interpolating disparity map");
+void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cuda::Stream& stream, int radius, int iterations, int minDisparity, int maxDisparity) {
     int width = disparity.cols;
     int height = disparity.rows;
-
-    LOG4CXX_DEBUG(logger, "Disparity map size: " << width << "x" << height);
-    LOG4CXX_DEBUG(logger, "Interpolation radius: " << radius);
-    LOG4CXX_DEBUG(logger, "Number of iterations: " << iterations);
-    LOG4CXX_DEBUG(logger, "Channels: " << disparity.channels());
 
     dim3 threadsPerBlock(THREADS_PER_BLOCK_X, THREADS_PER_BLOCK_Y);
     dim3 numBlocks((disparity.cols + (threadsPerBlock.x * X_BATCH - 1)) / (threadsPerBlock.x * X_BATCH),
@@ -96,10 +93,7 @@ void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cud
     int sharedSize = SHARED_SIZE(radius);
 
     cudaStream_t cudaStream = cv::cuda::StreamAccessor::getStream(stream);
-
-    LOG4CXX_DEBUG(logger, "Launching kernel with " << numBlocks.x << "x" << numBlocks.y << " blocks and " << threadsPerBlock.x << "x" << threadsPerBlock.y << " threads per block");
-
-    interpolateKernel<<<numBlocks, threadsPerBlock, sharedSize, cudaStream>>>(disparity, radius, width, height, iterations);
+    interpolateKernel<<<numBlocks, threadsPerBlock, sharedSize, cudaStream>>>(disparity, radius, width, height, iterations, minDisparity, maxDisparity);
 
     CUDA_SAFE_CALL(logger, cudaGetLastError());
 }

@@ -6,6 +6,6 @@
 
 namespace cart::disparity {
 
-void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cuda::Stream& stream, int radius, int iterations);
+void interpolate(log4cxx::LoggerPtr logger, cv::cuda::GpuMat& disparity, cv::cuda::Stream& stream, int radius, int iterations, int minDisparity, int maxDisparity);
 
 }  // namespace cart::disparity

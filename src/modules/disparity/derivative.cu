@@ -76,11 +76,11 @@ __global__ void calculateDirectionalDerivatives(cv::cuda::PtrStepSz<cart::dispar
             output[INDEX_CH(pixelX + j, pixelY + i, 2, 1, outputRowStep)] = horizontalDerivativeValid ? horizontalDerivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
 
             if (verticalDerivativeValid && verticalDerivative >= -128 && verticalDerivative <= 127) {
-                atomicAdd(&localHistogram[2 * (verticalDerivative + 128)], 1);  // First channel is vertical
+                atomicAdd_block(&localHistogram[2 * (verticalDerivative + 128)], 1);  // First channel is vertical
             }
 
             if (horizontalDerivativeValid && horizontalDerivative >= -128 && horizontalDerivative <= 127) {
-                atomicAdd(&localHistogram[2 * (horizontalDerivative + 128) + 1], 1);  // Second channel is horizontal
+                atomicAdd_block(&localHistogram[2 * (horizontalDerivative + 128) + 1], 1);  // Second channel is horizontal
             }
         }
     }

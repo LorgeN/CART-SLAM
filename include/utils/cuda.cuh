@@ -26,6 +26,15 @@ __device__ inline double atomicSub(double *address, double val) {
     return atomicAdd(address, -val);
 }
 
+// Based on https://forums.developer.nvidia.com/t/how-to-use-atomiccas-to-implement-atomicadd-short-trouble-adapting-programming-guide-example/22712/9
+// Not safe for overflow, but should be faster than atomicAdd
+__device__ inline uint16_t unsafeAtomicAdd(uint16_t *address, uint16_t val) {
+    unsigned int *base_address = (unsigned int *)((size_t)address & ~2);  // Align to 4 bytes
+    unsigned int intVal = ((size_t)address & 2) ? ((unsigned int)val << 16) : val;
+    unsigned int intOld = atomicAdd(base_address, intVal);
+    return ((size_t)address & 2) ? (unsigned short)(intOld >> 16) : (unsigned short)(intOld & 0xffff);
+}
+
 namespace cg = cooperative_groups;
 
 namespace cart {

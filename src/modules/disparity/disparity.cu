@@ -71,7 +71,7 @@ system_data_t ImageDisparityModule::runInternal(System& system, SystemRunData& d
     this->stereoSGM->compute(left, right, disparity, stream);
 
     if (this->smoothingRadius > 0) {
-        disparity::interpolate(this->logger, disparity, stream, this->smoothingRadius, this->smoothingIterations);
+        disparity::interpolate(this->logger, disparity, stream, this->smoothingRadius, this->smoothingIterations, this->minDisparity, this->maxDisparity);
     }
 
     stream.waitForCompletion();
@@ -106,7 +106,7 @@ system_data_t ZEDImageDisparityModule::runInternal(System& system, SystemRunData
     processZedDisparity<<<numBlocks, threadsPerBlock, 0, cudaStream>>>(disparity, disparityTransformed);
 
     if (this->smoothingRadius > 0) {
-        disparity::interpolate(this->logger, disparityTransformed, stream, this->smoothingRadius, this->smoothingIterations);
+        disparity::interpolate(this->logger, disparityTransformed, stream, this->smoothingRadius, this->smoothingIterations, 1, 256 + 1);
     }
 
     stream.waitForCompletion();
@@ -135,6 +135,15 @@ bool ImageDisparityVisualizationModule::updateImage(System& system, SystemRunDat
 #ifndef CARTSLAM_IMAGE_MAKE_GRAYSCALE
     cv::cvtColor(disparityImage, disparityImage, cv::COLOR_GRAY2BGR);
 #endif
+
+    // Color all pixels with invalid disparity as red
+    for (int i = 0; i < disparityImage.rows; i++) {
+        for (int j = 0; j < disparityImage.cols; j++) {
+            if (disparityData.at<int16_t>(i, j) == CARTSLAM_DISPARITY_INVALID) {
+                disparityImage.at<cv::Vec3b>(i, j) = cv::Vec3b(0, 0, 255);
+            }
+        }
+    }
 
     cv::vconcat(image, disparityImage, output);
     return true;

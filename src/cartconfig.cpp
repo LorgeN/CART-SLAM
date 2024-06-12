@@ -158,9 +158,10 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                 break;
             case hash("disparity"):
                 system->addModule<cart::ImageDisparityModule>(
+                    dataSource->getImageSize(),
                     get(moduleConfig, "min_disparity", 0),
                     get(moduleConfig, "num_disparities", 256),
-                    get(moduleConfig, "block_size", 3),
+                    get(moduleConfig, "block_size", 5),
                     get(moduleConfig, "smoothing_radius", -1),
                     get(moduleConfig, "smoothing_iterations", 5));
                 break;
@@ -168,6 +169,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                 system->addModule<cart::ZEDImageDisparityModule>(
                     get(moduleConfig, "smoothing_radius", -1),
                     get(moduleConfig, "smoothing_iterations", 5));
+                break;
+            case hash("disparity_visualization"):
+                system->addModule<cart::ImageDisparityVisualizationModule>();
                 break;
             case hash("disparity_derivative"):
                 system->addModule<cart::ImageDisparityDerivativeModule>();
@@ -226,6 +230,8 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
             case hash("bev_planeseg_visualization"):
                 system->addModule<cart::PlaneSegmentationBEVVisualizationModule>();
                 break;
+            default:
+                throw std::runtime_error("Unknown module type " + moduleType + ".");
         }
     }
 

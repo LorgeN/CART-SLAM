@@ -9,7 +9,7 @@
             "type": "superpixels",
             "initial_iterations": 24,
             "iterations": 12,
-            "block_size": 10,
+            "block_size": 12,
             "reset_iterations": 64
         },
         {
@@ -17,8 +17,8 @@
         },
         {
             "type": "disparity",
-            "smoothing_radius": 2,
-            "smoothing_iterations": 1
+            "smoothing_radius": 3,
+            "smoothing_iterations": 2
         },
         {
             "type": "disparity_derivative"

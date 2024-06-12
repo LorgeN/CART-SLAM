@@ -29,16 +29,16 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        last = system->run().then([logger](boost::future<void> future) {
+        system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
             }
-        });
+        }).wait();
     }
 
-    last.get();
+    //last.get();
 
     system->getThreadPool().join();
     return 0;

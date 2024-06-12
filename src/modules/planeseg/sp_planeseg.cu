@@ -22,17 +22,6 @@
 
 namespace cg = cooperative_groups;
 
-// Based on https://forums.developer.nvidia.com/t/how-to-use-atomiccas-to-implement-atomicadd-short-trouble-adapting-programming-guide-example/22712/9
-// There will not be more than 65535 votes per label, so we can use 16 bit integers, and we can also
-// assume that there will be no overflow so we skip checking for that, which makes this operation a
-// bit faster and simpler
-__device__ uint16_t unsafeAtomicAdd(uint16_t* address, uint16_t val) {
-    unsigned int* base_address = (unsigned int*)((size_t)address & ~2);  // Align to 4 bytes
-    unsigned int intVal = ((size_t)address & 2) ? ((unsigned int)val << 16) : val;
-    unsigned int intOld = atomicAdd(base_address, intVal);
-    return ((size_t)address & 2) ? (unsigned short)(intOld >> 16) : (unsigned short)(intOld & 0xffff);
-}
-
 __global__ void performSuperPixelClassifications(const cv::cuda::PtrStepSz<cart::derivative_t> derivatives,
                                                  const cv::cuda::PtrStepSz<cart::contour::label_t> labels,
                                                  cv::cuda::PtrStepSz<uint8_t> planes,
