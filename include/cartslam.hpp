@@ -88,7 +88,7 @@ class System : public boost::enable_shared_from_this<System>, public DataContain
     void insertGlobalData(const std::string key, boost::shared_ptr<void> data);
     void insertGlobalData(system_data_pair_t data);
 
-    const boost::shared_ptr<const DataSource> getDataSource() const;
+    const boost::shared_ptr<DataSource> getDataSource() const;
 
    private:
     void verifyDependencies();

@@ -6,6 +6,8 @@
 #include <iostream>
 #include <opencv2/cudawarping.hpp>
 
+#include "utils/path.hpp"
+
 #define LEFT_CAM_ID 2
 #define RIGHT_CAM_ID 3
 
@@ -88,15 +90,15 @@ KITTIDataSource::KITTIDataSource(std::string basePath, int sequence, cv::Size im
 }
 
 KITTIDataSource::KITTIDataSource(std::string path, cv::Size imageSize) : DataSource(imageSize) {
-    this->path = path;
+    this->path = cart::util::resolvePath(path);
     this->currentFrame = 0;
 
     std::string calibPath = this->path + "/calib.txt";
-    std::ifstream inputFile(calibPath);
+    std::ifstream inputFile(calibPath, std::ios::in);
 
     // Check if the file is successfully opened
     if (!inputFile.is_open()) {
-        throw std::runtime_error("Failed to open calibration file");
+        throw std::runtime_error("Failed to open calibration file at " + calibPath + ": " + strerror(errno));
     }
 
     KITTICameraCalibration leftCalibration;

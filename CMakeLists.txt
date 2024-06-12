@@ -19,6 +19,7 @@ find_package( OpenCV REQUIRED )
 find_package( log4cxx 1.2 )
 find_package( OpenMP )
 find_package( ZED 4 )
+find_package( nlohmann_json 3.11.2 )
 
 add_executable( cart_slam 
     src/main.cpp 
@@ -27,6 +28,7 @@ add_executable( cart_slam
     src/sources/kitti.cpp
     src/sources/zed.cpp
     src/logging.cpp 
+    src/cartconfig.cpp
     src/modules/module.cpp 
     src/modules/depth.cpp 
     src/modules/features.cpp 
@@ -91,6 +93,12 @@ if(ZED_FOUND)
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_ZED )
     target_include_directories( cart_slam PRIVATE ${ZED_INCLUDE_DIRS} )
     target_link_libraries( cart_slam PUBLIC ${ZED_LIBRARIES} )
+endif()
+
+if(nlohmann_json_FOUND)
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_JSON )
+    target_include_directories( cart_slam PRIVATE ${nlohmann_json_INCLUDE_DIRS} )
+    target_link_libraries( cart_slam PUBLIC nlohmann_json::nlohmann_json )
 endif()
 
 target_include_directories( cart_slam PRIVATE $<TARGET_PROPERTY:log4cxx,INTERFACE_INCLUDE_DIRECTORIES>)

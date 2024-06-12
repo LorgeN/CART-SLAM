@@ -221,7 +221,7 @@ boost::shared_ptr<SystemRunData> System::getRunById(const uint32_t id) {
     return this->runs[id - firstElementId];
 }
 
-const boost::shared_ptr<const DataSource> System::getDataSource() const {
+const boost::shared_ptr<DataSource> System::getDataSource() const {
     return this->dataSource;
 }
 
@@ -230,16 +230,21 @@ boost::future<void> System::run() {
         throw std::invalid_argument("No modules have been added to the system");
     }
 
+#ifdef CARTSLAM_TIMING
+    auto systemTiming = timing::initTiming("system", this->runId);  // We will update the run ID later
+    timing::startTiming(systemTiming);
+#endif
+
     cv::cuda::Stream stream;
+    boost::shared_ptr<SystemRunData> runData = this->startNewRun(stream);
+    LOG4CXX_INFO(this->logger, "Starting new run with id " << runData->id);
 
     // TODO: Sort the modules topologically for more efficient execution order
 #ifdef CARTSLAM_TIMING
     LOG4CXX_DEBUG(this->logger, "Starting timing for frame");
-    auto frameTiming = timing::initTiming("frame");
+    auto frameTiming = timing::initTiming("frame", runData->id);
+    systemTiming->runId = runData->id;
 #endif
-
-    boost::shared_ptr<SystemRunData> runData = this->startNewRun(stream);
-    LOG4CXX_INFO(this->logger, "Starting new run with id " << runData->id);
 
 #ifdef CARTSLAM_TIMING
     timing::startTiming(frameTiming);
@@ -253,7 +258,7 @@ boost::future<void> System::run() {
 
 #ifdef CARTSLAM_TIMING
         LOG4CXX_DEBUG(this->logger, "Starting timing for module " << moduleName);
-        auto timing = timing::initTiming(module->name);
+        auto timing = timing::initTiming(module->name, runData->id);
 #endif
 
         auto requiredData = module->getRequiredData();
@@ -299,7 +304,7 @@ boost::future<void> System::run() {
     LOG4CXX_DEBUG(runData->getLogger(), "All modules have been submitted for execution for run ID " << runData->id);
     log4cxx::LoggerPtr logger = runData->getLogger();
 
-    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger IF_TIMING(frameTiming)](auto future) {
+    return boost::when_all(moduleFutures.begin(), moduleFutures.end()).then([this, runData, logger IF_TIMING(frameTiming) IF_TIMING(systemTiming)](auto future) {
         LOG4CXX_DEBUG(logger, "All modules have finished for run with ID " << runData->id);
 
         try {
@@ -321,6 +326,10 @@ boost::future<void> System::run() {
 #endif
 
         this->runCondition.notify_all();
+
+#ifdef CARTSLAM_TIMING
+        timing::endTiming(systemTiming);
+#endif
     });
 }
 

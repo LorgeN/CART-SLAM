@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <filesystem>
 
 #include "logging.hpp"
 #include "utils/csv.hpp"
@@ -16,12 +17,13 @@
 namespace cart::timing {
 struct timing_handle_t {
     const std::string name;
+    size_t runId;
     const std::chrono::time_point<std::chrono::high_resolution_clock> init;
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
 
-    timing_handle_t(const std::string name, const std::chrono::time_point<std::chrono::high_resolution_clock> init)
-        : name(name), init(init) {}
+    timing_handle_t(const std::string name, const size_t runId, const std::chrono::time_point<std::chrono::high_resolution_clock> init)
+        : name(name), runId(runId), init(init) {}
 };
 
 inline const std::string timeToString(const std::chrono::time_point<std::chrono::system_clock> &time) {
@@ -37,11 +39,16 @@ inline const long long getMilliseconds(const std::chrono::time_point<std::chrono
 
 // Use current time to generate a unique filename
 inline const std::string generateFileName() {
-    return "timing-" + timeToString(std::chrono::system_clock::now()) + ".csv";
+    // Check if timing folder exists
+    if (!std::filesystem::exists("timing")) {
+        std::filesystem::create_directory("timing");
+    }
+
+    return "timing/timing-" + timeToString(std::chrono::system_clock::now()) + ".csv";
 }
 
-inline boost::shared_ptr<timing_handle_t> initTiming(const std::string &name) {
-    return boost::make_shared<timing_handle_t>(name, std::chrono::high_resolution_clock::now());
+inline boost::shared_ptr<timing_handle_t> initTiming(const std::string &name, const size_t runId) {
+    return boost::make_shared<timing_handle_t>(name, runId, std::chrono::high_resolution_clock::now());
 }
 
 inline void startTiming(boost::shared_ptr<timing_handle_t> handle) {
@@ -49,7 +56,7 @@ inline void startTiming(boost::shared_ptr<timing_handle_t> handle) {
 }
 
 inline void endTiming(boost::shared_ptr<timing_handle_t> handle) {
-    static utils::csvfile timingFile(generateFileName(), ";", std::vector<std::string>{"name", "time_init", "time_start", "time_end", "duration_ms"});
+    static utils::csvfile timingFile(generateFileName(), ";", std::vector<std::string>{"name", "run_id", "time_init", "time_start", "time_end", "duration_ms"});
     static boost::mutex mutex;
 
     handle->end = std::chrono::high_resolution_clock::now();
@@ -57,7 +64,7 @@ inline void endTiming(boost::shared_ptr<timing_handle_t> handle) {
     // Write to file
     {
         boost::lock_guard<boost::mutex> lock(mutex);
-        timingFile << handle->name << getMilliseconds(handle->init) << getMilliseconds(handle->start) << getMilliseconds(handle->end)
+        timingFile << handle->name << handle->runId << getMilliseconds(handle->init) << getMilliseconds(handle->start) << getMilliseconds(handle->end)
                    << std::chrono::duration_cast<std::chrono::milliseconds>(handle->end - handle->start).count() << utils::endrow;
     }
 }

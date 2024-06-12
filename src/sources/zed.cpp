@@ -5,6 +5,8 @@
 
 #include <opencv2/cudaimgproc.hpp>
 
+#include "utils/path.hpp"
+
 namespace cart::sources {
 ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure, cv::Size imageSize) : DataSource(imageSize), path(path), extractDisparityMeasure(extractDepthMeasure) {
     this->camera = boost::make_shared<sl::Camera>();
@@ -15,7 +17,7 @@ ZEDDataSource::ZEDDataSource(std::string path, bool extractDepthMeasure, cv::Siz
     params.svo_real_time_mode = true;
 #endif
 
-    params.input.setFromSVOFile(path.c_str());
+    params.input.setFromSVOFile(cart::util::resolvePath(path).c_str());
     params.coordinate_units = sl::UNIT::METER;
     params.depth_mode = sl::DEPTH_MODE::QUALITY;
     params.depth_maximum_distance = 40.0f;
