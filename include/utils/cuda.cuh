@@ -52,6 +52,8 @@ struct __align__(16) cv_mat_ptr_t {
 
 void copyColorWheelToDevice(cudaStream_t &stream);
 
+__device__ void assignColor(float idx, uint8_t *pix);
+
 __device__ void assignColor(float fx, float fy, uint8_t *pix);
 
 template <typename T, int XBatch, int YBatch, bool Interpolate = true>

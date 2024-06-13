@@ -25,6 +25,15 @@ void fillColorWheel(cv::Vec3i* colorWheel) {
 
 const ColorWheel COLOR_WHEEL;
 
+cv::Vec3b computeColor(float color) {
+    const float fx = color * (NCOLS - 1);
+    const int ix = static_cast<int>(fx);
+
+    const cv::Vec3f c0 = COLOR_WHEEL[ix];
+
+    return cv::Vec3b(static_cast<uint8_t>(c0[0]), static_cast<uint8_t>(c0[1]), static_cast<uint8_t>(c0[1]));
+}
+
 // From https://github.com/opencv/opencv_contrib/blob/4.x/modules/cudaoptflow/samples/nvidia_optical_flow.cpp
 cv::Vec3b computeColor(float fx, float fy) {
     const float rad = sqrt(fx * fx + fy * fy);

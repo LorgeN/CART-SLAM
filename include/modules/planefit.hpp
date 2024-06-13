@@ -15,6 +15,13 @@ struct plane_fit_data_t {
     std::vector<size_t> planeAssignments;
 };
 
+typedef unsigned int label_inliers_t;
+
+struct label_statistics_t {
+    uint16_t pixelCount;
+    uint16_t pixelCountInvalid;
+};
+
 class SuperPixelPlaneFitModule : public SyncWrapperSystemModule {
    public:
     SuperPixelPlaneFitModule();
@@ -22,14 +29,18 @@ class SuperPixelPlaneFitModule : public SyncWrapperSystemModule {
     system_data_t runInternal(System& system, SystemRunData& data) override;
 
    private:
-    void attemptAssignment(
-        const cv::cuda::GpuMat& superpixels,
-        const cv::cuda::GpuMat& depth,
-        const std::vector<cv::Vec4d>& planes,
-        size_t& assignedPlanes,
-        const cart::contour::label_t maxLabelId,
-        const double threshold,
-        std::vector<size_t>& planeAssignments);
+    std::pair<cv::Vec4d, std::vector<cart::contour::label_t>> attemptAssignment(const cv::cuda::GpuMat& superpixels,
+                                                                                const cv::cuda::GpuMat& depth,
+                                                                                const std::vector<cv::Vec4d>& planes,
+                                                                                const cart::contour::label_t maxLabelId,
+                                                                                const std::vector<size_t>& planeAssignments,
+                                                                                const label_statistics_t* labelStatsHost,
+                                                                                const double threshold);
+
+    void generateLabelStatistics(const cv::cuda::GpuMat& superpixels,
+                                 const cv::cuda::GpuMat& depth,
+                                 label_statistics_t* labelStatsHost,
+                                 const cart::contour::label_t maxLabelId);
 };
 
 class SuperPixelPlaneFitVisualizationModule : public VisualizationModule {

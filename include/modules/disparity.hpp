@@ -23,16 +23,16 @@ typedef int16_t derivative_t;
 
 class ImageDisparityModule : public SyncWrapperSystemModule {
    public:
-    ImageDisparityModule(const cv::Size imageRes, int minDisparity = 0, int numDisparities = 256, int blockSize = 5, int smoothingRadius = -1, int smoothingIterations = 5)
+    ImageDisparityModule(const cv::Size imageRes, int minDisparity = 4, int numDisparities = 256, int blockSize = 3, int smoothingRadius = -1, int smoothingIterations = 5)
         : SyncWrapperSystemModule("ImageDisparity"), smoothingRadius(smoothingRadius), smoothingIterations(smoothingIterations), 
-        minDisparity((minDisparity + 4) * 16), maxDisparity(imageRes.width) {
+        minDisparity(minDisparity * 16), maxDisparity(imageRes.width) {
         this->providesData.push_back(CARTSLAM_KEY_DISPARITY);
 
         this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities);
-        this->stereoSGM->setUniquenessRatio(5);
+        this->stereoSGM->setUniquenessRatio(12);
         this->stereoSGM->setBlockSize(blockSize);
-        this->stereoSGM->setSpeckleWindowSize(64);
-        this->stereoSGM->setSpeckleRange(2);
+        //this->stereoSGM->setSpeckleWindowSize(64);
+        //this->stereoSGM->setSpeckleRange(2);
     };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;

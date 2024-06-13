@@ -32,7 +32,7 @@ void reportMemoryUsage(log4cxx::LoggerPtr logger) {
     LOG4CXX_INFO(logger, "GPU memory usage: used = " << used_db / 1024 / 1024 << " MB, free = " << free_db / 1024 / 1024 << " MB, total = " << total_db / 1024 / 1024 << " MB");
 }
 
-struct DeviceColor {
+struct __align__(16) DeviceColor {
     uint8_t color[3];
 };
 
@@ -41,6 +41,18 @@ __constant__ DeviceColor COLOR_WHEEL_DEVICE[NCOLS];
 void copyColorWheelToDevice(cudaStream_t &stream) {
     const util::ColorWheel colorWheel;
     cudaMemcpyToSymbolAsync(COLOR_WHEEL_DEVICE, colorWheel.colorWheel, NCOLS * sizeof(DeviceColor), 0, cudaMemcpyHostToDevice, stream);
+}
+
+__device__ void assignColor(float idx, uint8_t *pix) {
+    const float fx = idx * (NCOLS - 1);
+    const int ix = static_cast<int>(fx);
+
+    const DeviceColor c0 = COLOR_WHEEL_DEVICE[ix];
+
+#pragma unroll
+    for (int b = 0; b < 3; b++) {
+        pix[2 - b] = c0.color[b];
+    }
 }
 
 __device__ void assignColor(float fx, float fy, uint8_t *pix) {

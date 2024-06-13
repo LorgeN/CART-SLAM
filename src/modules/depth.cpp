@@ -34,7 +34,13 @@ bool DepthVisualizationModule::updateImage(System& system, SystemRunData& data, 
 
     // Only show the Z (depth) channel
     image = channels[2];
-    image.convertTo(image, CV_8U, 255.0 / 30.0);
+
+    // Find the minimum and maximum values
+    double min, max;
+    cv::minMaxLoc(image, &min, &max, NULL, NULL);
+    LOG4CXX_DEBUG(logger, "Depth min: " << min << ", max: " << max);
+
+    image.convertTo(image, CV_8U, 255.0 / 10.0);
     return true;
 }
 }  // namespace cart

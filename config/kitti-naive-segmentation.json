@@ -18,7 +18,7 @@
         },
         {
             "type": "disparity_planeseg_visualization",
-            "show_histogram": false
+            "show_histogram": true
         }
     ]
 }

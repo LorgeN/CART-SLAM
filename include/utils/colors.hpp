@@ -27,6 +27,8 @@ class ColorWheel {
     }
 };
 
+cv::Vec3b computeColor(float color);
+
 cv::Vec3b computeColor(float fx, float fy);
 
 // CUDA-variant in utils/cuda.cuh

@@ -159,9 +159,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
             case hash("disparity"):
                 system->addModule<cart::ImageDisparityModule>(
                     dataSource->getImageSize(),
-                    get(moduleConfig, "min_disparity", 0),
+                    get(moduleConfig, "min_disparity", 4),
                     get(moduleConfig, "num_disparities", 256),
-                    get(moduleConfig, "block_size", 5),
+                    get(moduleConfig, "block_size", 3),
                     get(moduleConfig, "smoothing_radius", -1),
                     get(moduleConfig, "smoothing_iterations", 5));
                 break;
@@ -175,6 +175,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                 break;
             case hash("disparity_derivative"):
                 system->addModule<cart::ImageDisparityDerivativeModule>();
+                break;
+            case hash("disparity_derivative_visualization"):
+                system->addModule<cart::ImageDisparityDerivativeVisualizationModule>();
                 break;
             case hash("features"): {
                 const std::string featureType = get<std::string>(moduleConfig, "feature_type", "orb");

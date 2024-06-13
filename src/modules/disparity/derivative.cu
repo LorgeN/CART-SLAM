@@ -134,11 +134,14 @@ __global__ void applyFalseColors(cv::cuda::PtrStepSz<cart::derivative_t> derivat
             cart::derivative_t dx = derivatives[INDEX_CH(pixelX + j, pixelY + i, 2, 0, inputRowStep)];
             cart::derivative_t dy = derivatives[INDEX_CH(pixelX + j, pixelY + i, 2, 1, inputRowStep)];
 
+            uint8_t* outputPixel = output + INDEX_BGR(pixelX + j, pixelY + i, 0, outputRowStep);
             if (!IS_VALID(dx) || !IS_VALID(dy)) {
+                outputPixel[0] = 0;
+                outputPixel[1] = 255;
+                outputPixel[2] = 255;
                 continue;
             }
 
-            uint8_t* outputPixel = output + INDEX_BGR(pixelX + j, pixelY + i, 0, outputRowStep);
             cart::assignColor(static_cast<double>(dx) / maxrad, static_cast<double>(dy) / maxrad, outputPixel);
         }
     }
