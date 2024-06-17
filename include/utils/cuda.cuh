@@ -78,30 +78,31 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, const int
     const size_t startX = (blockIdx.x * blockDim.x) * XBatch;
     const size_t startY = (blockIdx.y * blockDim.y) * YBatch;
 
-    for (int i = 0; i < (blockDim.y * YBatch); i++) {
-        if (startY + i >= height) {
-            break;
-        }
+    int paddedXStart = max(0, static_cast<int>(startX) - xPadding);
+    int paddedSharedXStart = paddedXStart - startX;
 
-        cg::memcpy_async(tb, &shared[SHARED_INDEX(0, i, xPadding, yPadding, sharedRowStep)],
-                         &values[INDEX(startX, startY + i, inputRowStep)], blockDim.x * XBatch * sizeof(T));
+    int paddedYStart = max(0, static_cast<int>(startY) - yPadding);
+    int paddedSharedYStart = paddedYStart - startY;
+
+    int xDim = min(static_cast<unsigned int>(width - paddedXStart), static_cast<unsigned int>(XBatch * blockDim.x + 2 * xPadding));
+    int yDim = min(static_cast<unsigned int>(height - paddedYStart), static_cast<unsigned int>(YBatch * blockDim.y + 2 * yPadding));
+
+    // Copy everything we can copy, and dont need to interpolate
+    for (int i = 0; i < yDim; i++) {
+        cg::memcpy_async(tb, &shared[SHARED_INDEX(paddedSharedXStart, paddedSharedYStart + i, xPadding, yPadding, sharedRowStep)],
+                         &values[INDEX(paddedXStart, startY + i, inputRowStep)], xDim * sizeof(T));
     }
 
     cg::wait(tb);
 
-    if (yPadding > 0) {
-        int localXStart = max(0, static_cast<int>(startX) - xPadding);
-        int localSharedXStart = localXStart - startX;
-        int xDim = min(static_cast<unsigned int>(width - localXStart), static_cast<unsigned int>(XBatch * blockDim.x + 2 * xPadding));
+    // Handle necessary interpolation
 
+    if (static_cast<int>(startY) - yPadding < 0) {
         // Copy extra rows on top
         for (int i = 1; i <= yPadding; i++) {
-            if (static_cast<int>(startY) - i >= 0) {
-                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, -i, xPadding, yPadding, sharedRowStep)],
-                                 &values[INDEX(localXStart, startY - i, inputRowStep)], xDim * sizeof(T));
-            } else if constexpr (!Interpolate) {
-                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, -i, xPadding, yPadding, sharedRowStep)],
-                                 &values[INDEX(localXStart, 0, inputRowStep)], xDim * sizeof(T));
+            if constexpr (!Interpolate) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(paddedSharedXStart, -i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(paddedXStart, 0, inputRowStep)], xDim * sizeof(T));
             } else if (threadIdx.y == 0) {
                 for (int j = 0; j < XBatch; j++) {
                     if (pixelX + j >= width) {
@@ -116,43 +117,33 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, const int
                 }
             }
         }
+    }
 
-        int maxSharedY = YBatch * blockDim.y;
-
+    if (startY + YBatch * blockDim.y + yPadding > height) {
         // Copy extra rows on bottom
         for (int i = 0; i < yPadding; i++) {
-            if ((startY + (YBatch * blockDim.y) + i) < height) {
-                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, maxSharedY + i, xPadding, yPadding, sharedRowStep)],
-                                 &values[INDEX(localXStart, startY + (YBatch * blockDim.y) + i, inputRowStep)], xDim * sizeof(T));
-            } else if constexpr (!Interpolate) {
-                cg::memcpy_async(tb, &shared[SHARED_INDEX(localSharedXStart, maxSharedY + i, xPadding, yPadding, sharedRowStep)],
-                                 &values[INDEX(localXStart, height - 1, inputRowStep)], xDim * sizeof(T));
+            if constexpr (!Interpolate) {
+                cg::memcpy_async(tb, &shared[SHARED_INDEX(paddedSharedXStart, YBatch * blockDim.y + i, xPadding, yPadding, sharedRowStep)],
+                                 &values[INDEX(paddedXStart, height - 1, inputRowStep)], xDim * sizeof(T));
             } else if (threadIdx.y == blockDim.y - 1) {
                 for (int j = 0; j < XBatch; j++) {
                     if (pixelX + j >= width) {
                         break;
                     }
 
-                    T borderValue = shared[SHARED_INDEX(sharedPixelX + j, maxSharedY - 1, xPadding, yPadding, sharedRowStep)];
-                    T prevValue = shared[SHARED_INDEX(sharedPixelX + j, maxSharedY - 2 - i, xPadding, yPadding, sharedRowStep)];
+                    T borderValue = shared[SHARED_INDEX(sharedPixelX + j, YBatch * blockDim.y - 1, xPadding, yPadding, sharedRowStep)];
+                    T prevValue = shared[SHARED_INDEX(sharedPixelX + j, YBatch * blockDim.y - 2 - i, xPadding, yPadding, sharedRowStep)];
                     T value = borderValue + (borderValue - prevValue);
 
-                    shared[SHARED_INDEX(sharedPixelX + j, maxSharedY + i, xPadding, yPadding, sharedRowStep)] = value;
+                    shared[SHARED_INDEX(sharedPixelX + j, YBatch * blockDim.y + i, xPadding, yPadding, sharedRowStep)] = value;
                 }
             }
         }
     }
 
-    if (xPadding > 0) {
-        int yDim = min(static_cast<unsigned int>(height - startY), static_cast<unsigned int>(YBatch * blockDim.y));
-        // Copy extra columns on left
+    if (static_cast<int>(startX) - xPadding < 0) {
         for (int i = 1; i <= xPadding; i++) {
-            if (static_cast<int>(startX) - i >= 0) {
-                for (int j = 0; j < yDim; j++) {
-                    cg::memcpy_async(tb, &shared[SHARED_INDEX(-i, j, xPadding, yPadding, sharedRowStep)],
-                                     &values[INDEX(startX - i, startY + j, inputRowStep)], sizeof(T));
-                }
-            } else if constexpr (!Interpolate) {
+            if constexpr (!Interpolate) {
                 for (int j = 0; j < yDim; j++) {
                     cg::memcpy_async(tb, &shared[SHARED_INDEX(-i, j, xPadding, yPadding, sharedRowStep)],
                                      &values[INDEX(0, startY + j, inputRowStep)], sizeof(T));
@@ -171,18 +162,13 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, const int
                 }
             }
         }
+    }
 
-        int maxSharedX = XBatch * blockDim.x;
-        // Copy extra columns on right
+    if (startX + XBatch * blockDim.x + xPadding > width) {
         for (int i = 0; i < xPadding; i++) {
-            if ((startX + (XBatch * blockDim.x) + i) < width) {
+            if constexpr (!Interpolate) {
                 for (int j = 0; j < yDim; j++) {
-                    cg::memcpy_async(tb, &shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)],
-                                     &values[INDEX(startX + (XBatch * blockDim.x) + i, startY + j, inputRowStep)], sizeof(T));
-                }
-            } else if constexpr (!Interpolate) {
-                for (int j = 0; j < yDim; j++) {
-                    cg::memcpy_async(tb, &shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)],
+                    cg::memcpy_async(tb, &shared[SHARED_INDEX(XBatch * blockDim.x + i, j, xPadding, yPadding, sharedRowStep)],
                                      &values[INDEX(width - 1, startY + j, inputRowStep)], sizeof(T));
                 }
             } else if (threadIdx.x == blockDim.x - 1) {
@@ -191,11 +177,11 @@ __device__ void copyToShared(T *shared, cv::cuda::PtrStepSz<T> values, const int
                         break;
                     }
 
-                    T borderValue = shared[SHARED_INDEX(maxSharedX - 1, j, xPadding, yPadding, sharedRowStep)];
-                    T prevValue = shared[SHARED_INDEX(maxSharedX - 2 - i, j, xPadding, yPadding, sharedRowStep)];
+                    T borderValue = shared[SHARED_INDEX(XBatch * blockDim.x - 1, j, xPadding, yPadding, sharedRowStep)];
+                    T prevValue = shared[SHARED_INDEX(XBatch * blockDim.x - 2 - i, j, xPadding, yPadding, sharedRowStep)];
                     T value = borderValue + (borderValue - prevValue);
 
-                    shared[SHARED_INDEX(maxSharedX + i, j, xPadding, yPadding, sharedRowStep)] = value;
+                    shared[SHARED_INDEX(XBatch * blockDim.x + i, j, xPadding, yPadding, sharedRowStep)] = value;
                 }
             }
         }
