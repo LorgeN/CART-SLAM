@@ -439,6 +439,11 @@ void HistogramPeakPlaneParameterProvider::updatePlaneParameters(log4cxx::LoggerP
     int verticalDerivative = (histogram.at<int>(peaks[0].born) - histogram.at<int>(minIndex)) / verticalMinDist;
     int horizontalDerivative = (histogram.at<int>(peaks[1].born) - histogram.at<int>(minIndex)) / horizontalMinDist;
 
+    if (verticalDerivative == 0 || horizontalDerivative == 0) {
+        LOG4CXX_WARN(logger, "Histogram peak provider: Vertical or horizontal derivative is 0");
+        return;
+    }
+
     int verticalWidth = histogram.at<int>(peaks[0].born) / verticalDerivative;
     int horizontalWidth = histogram.at<int>(peaks[1].born) / horizontalDerivative;
 

@@ -31,8 +31,6 @@ class ImageDisparityModule : public SyncWrapperSystemModule {
         this->stereoSGM = cv::cuda::createStereoSGM(minDisparity, numDisparities);
         this->stereoSGM->setUniquenessRatio(12);
         this->stereoSGM->setBlockSize(blockSize);
-        //this->stereoSGM->setSpeckleWindowSize(64);
-        //this->stereoSGM->setSpeckleRange(2);
     };
 
     system_data_t runInternal(System& system, SystemRunData& data) override;
