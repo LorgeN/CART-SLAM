@@ -25,6 +25,8 @@
 
 #define ROUND_TO_INT(x) static_cast<int32_t>(round(x))
 
+#define IS_VALID_DISPARITY(x) (x != CARTSLAM_DISPARITY_INVALID)
+
 // TODO: Change disparity values to float?
 __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disparity,
                                      cv::cuda::PtrStepSz<cart::derivative_t> output,
@@ -66,7 +68,7 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
 #pragma unroll
         for (int i = -LOW_PASS_FILTER_PADDING; i < LOW_PASS_FILTER_PADDING; i++) {
             cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i)];
-            if (value != CARTSLAM_DISPARITY_INVALID) {
+            if (IS_VALID_DISPARITY(value)) {
                 sum += value;
                 count++;
             }
@@ -81,17 +83,17 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
 
         for (int i = 0; i < Y_BATCH; i++) {
             cart::disparity_t value = sharedDisparity[LOCAL_INDEX(j, i + LOW_PASS_FILTER_PADDING)];
-            if (value != CARTSLAM_DISPARITY_INVALID) {
+            if (IS_VALID_DISPARITY(value)) {
                 sum += value;
                 count++;
             }
 
             cart::disparity_t current = sharedDisparity[LOCAL_INDEX(j, i)];
 
-            sharedDisparity[LOCAL_INDEX(j, i)] = sum / count;
+            sharedDisparity[LOCAL_INDEX(j, i)] = count == 0 ? CARTSLAM_DISPARITY_INVALID : (sum / count);
 
             value = previous[previousIndex];
-            if (value != CARTSLAM_DISPARITY_INVALID) {
+            if (IS_VALID_DISPARITY(value)) {
                 sum -= value;
                 count--;
             }
@@ -114,9 +116,9 @@ __global__ void calculateDerivatives(cv::cuda::PtrStepSz<cart::disparity_t> disp
                 sharedDisparity[LOCAL_INDEX(j, i + 1)] -
                 sharedDisparity[LOCAL_INDEX(j, i - 1)];
 
-            bool valid = sharedDisparity[LOCAL_INDEX(j, i)] != CARTSLAM_DISPARITY_INVALID &&
-                         sharedDisparity[LOCAL_INDEX(j, i + 1)] != CARTSLAM_DISPARITY_INVALID &&
-                         sharedDisparity[LOCAL_INDEX(j, i - 1)] != CARTSLAM_DISPARITY_INVALID;
+            bool valid = IS_VALID_DISPARITY(sharedDisparity[LOCAL_INDEX(j, i)]) &&
+                         IS_VALID_DISPARITY(sharedDisparity[LOCAL_INDEX(j, i + 1)]) &&
+                         IS_VALID_DISPARITY(sharedDisparity[LOCAL_INDEX(j, i - 1)]);
             output[INDEX(pixelX + j, pixelY + i, outputRowStep)] = valid ? derivative : CARTSLAM_DISPARITY_DERIVATIVE_INVALID;
 
             // Only update histogram if the value is within the range of a signed char

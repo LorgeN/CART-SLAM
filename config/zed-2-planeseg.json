@@ -2,7 +2,7 @@
     "data_source": {
         "type": "zed",
         "include_disparity": true,
-        "path": "~/Datasets/ZED/2023-07-11 Multi ZED Summer/ZED camera svo files/2023-07-11_12-00-42_28170706_HD1080_FPS15.svo"
+        "path": "~/Datasets/ZED/2023-07-11 Multi ZED Summer/ZED camera svo files/2023-07-11_12-49-30_5256916_HD1080_FPS15.svo"
     },
     "modules": [
         {
@@ -28,10 +28,10 @@
             "type": "superpixel_disparity_planeseg",
             "parameter_provider": {
                 "type": "static",
-                "horizontal_range_min": 3,
+                "horizontal_range_min": 2,
                 "horizontal_range_max": 30,
                 "vertical_range_min": -3,
-                "vertical_range_max": 3
+                "vertical_range_max": 2
             },
             "use_temporal_smoothing": true
         },

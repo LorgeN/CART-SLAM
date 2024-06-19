@@ -1,0 +1,15 @@
+{
+    "data_source": {
+        "type": "kitti",
+        "path": "~/Datasets/KITTI/dataset",
+        "sequence": 0
+    },
+    "modules": [
+        {
+            "type": "optflow"
+        },
+        {
+            "type": "optflow_visualization"
+        }
+    ]
+}

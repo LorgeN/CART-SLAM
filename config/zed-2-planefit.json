@@ -1,0 +1,37 @@
+{
+    "data_source": {
+        "type": "zed",
+        "include_disparity": true,
+        "path": "~/Datasets/ZED/2023-07-11 Multi ZED Summer/ZED camera svo files/2023-07-11_12-55-58_5256916_HD1080_FPS15.svo"
+    },
+    "modules": [
+        {
+            "type": "zed_disparity"
+        },
+        {
+            "type": "superpixels",
+            "initial_iterations": 24,
+            "iterations": 12,
+            "block_size": 12,
+            "reset_iterations": 64
+        },
+        {
+            "type": "optflow"
+        },
+        {
+            "type": "disparity_derivative"
+        },
+        {
+            "type": "depth"
+        },
+        {
+            "type": "depth_visualization"
+        },
+        {
+            "type": "planefit"
+        },
+        {
+            "type": "planefit_visualization"
+        }
+    ]
+}

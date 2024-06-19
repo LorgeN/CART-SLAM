@@ -13,6 +13,7 @@
 #include "modules/disparity.hpp"
 #include "modules/features.hpp"
 #include "modules/optflow.hpp"
+#include "modules/planecluster.hpp"
 #include "modules/planefit.hpp"
 #include "modules/planeseg.hpp"
 #include "modules/superpixels.hpp"
@@ -203,6 +204,9 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                 break;
             case hash("planefit"):
                 system->addModule<cart::SuperPixelPlaneFitModule>();
+                break;
+            case hash("planecluster"):
+                system->addModule<cart::SuperPixelPlaneClusterModule>();
                 break;
             case hash("planefit_visualization"):
                 system->addModule<cart::SuperPixelPlaneFitVisualizationModule>();
