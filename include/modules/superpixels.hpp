@@ -20,10 +20,10 @@ class SuperPixelModule : public SyncWrapperSystemModule {
         const unsigned int iterations = 6,
         const unsigned int blockSize = 12,
         const unsigned int resetIterations = 64,
-        const double directCliqueCost = 0.25,
-        const double diagonalCliqueCost = 0.25 / sqrt(2),
+        const double directCliqueCost = 0.5,
+        const double diagonalCliqueCost = 0.5 / sqrt(2),
         const double compactnessWeight = 0.05,
-        const double progressiveCompactnessCost = 1.0, // Disabled by default
+        const double progressiveCompactnessCost = 0.0, // Disabled by default
         const double imageWeight = 1.0,
         const double disparityWeight = 1.25);
 

@@ -31,6 +31,7 @@ class CUDACompactnessFeature : public CUDAFeature {
     LabelStatisticsGauss* labelStatisticsPosY;
     label_t maxLabelId;
     double progressiveCost;
+    size_t height;
 
     /**
      * @brief Update label statistics to reflect a label change of the given pixel.

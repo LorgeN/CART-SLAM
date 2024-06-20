@@ -141,10 +141,10 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                     get(moduleConfig, "iterations", 6),
                     get(moduleConfig, "block_size", 12),
                     get(moduleConfig, "reset_iterations", 64),
-                    get(moduleConfig, "direct_clique_cost", 0.25),
-                    get(moduleConfig, "diagonal_clique_cost", 0.25 / sqrt(2)),
+                    get(moduleConfig, "direct_clique_cost", 0.5),
+                    get(moduleConfig, "diagonal_clique_cost", 0.5 / sqrt(2)),
                     get(moduleConfig, "compactness_weight", 0.05),
-                    get(moduleConfig, "progressive_compactness_cost", 1.0),
+                    get(moduleConfig, "progressive_compactness_cost", 0.0),
                     get(moduleConfig, "image_weight", 1.0),
                     get(moduleConfig, "disparity_weight", 1.25));
                 break;

@@ -1,7 +1,5 @@
 #include "modules/superpixels/contourrelaxation/features/compactness.cuh"
 
-#define PROGRESSIVE_PIXEL_GROUPING 24
-
 namespace cart::contour {
 
 __device__ CUDACompactnessFeature::CUDACompactnessFeature(label_t maxLabelId, double progressiveCost) : maxLabelId(maxLabelId), progressiveCost(progressiveCost) {
@@ -65,6 +63,11 @@ __device__ void CUDACompactnessFeature::updateStatistics(CRPoint const curPixelC
 }
 
 __device__ void CUDACompactnessFeature::initializeStatistics(const cv::cuda::PtrStepSz<label_t> labelImage, size_t xBatch, size_t yBatch) {
+    // Set the image height in a single thread
+    if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
+        height = labelImage.rows;
+    }
+
     for (label_t curLabel = 0; curLabel <= maxLabelId; ++curLabel) {
         updateCompactnessCost(labelStatisticsPosX[curLabel]);
         updateCompactnessCost(labelStatisticsPosY[curLabel]);
@@ -179,10 +182,9 @@ __device__ double CUDACompactnessFeature::calculateCost(const CRPoint curPixelCo
 
     // Increase the cost for the pixels that are at the top of the image, as these should
     // naturally be more compact.
-    if (this->progressiveCost > 1.0) {
-        // Note that y is the row and starts at 0 at the top of the image. Note that we add 1 to the
-        // division to avoid division by zero.
-        featureCost *= (1.0 + (this->progressiveCost / (curPixelCoords.y / PROGRESSIVE_PIXEL_GROUPING + 1))) / this->progressiveCost;
+    if (this->progressiveCost > 0.0) {
+        // Note that y is the row and starts at 0 at the top of the image.
+        featureCost *= 1.0 + this->progressiveCost * (this->height - static_cast<double>(curPixelCoords.y)) / static_cast<double>(height);
     }
 
     return featureCost;
