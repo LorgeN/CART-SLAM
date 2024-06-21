@@ -19,12 +19,9 @@ class ImageThread {
         return instance;
     }
 
-    ~ImageThread() {
-        this->thread.interrupt();
-        this->thread.join();
-    }
-
     void appendImageProvider(const boost::weak_ptr<ImageProvider> provider);
+
+    void stop();
 
    private:
     ImageThread();
@@ -60,5 +57,9 @@ class ImageProvider : public boost::enable_shared_from_this<ImageProvider> {
     uint32_t frameIndex = 0;
     cv::Mat image;
     boost::mutex dataMutex;
+
+#ifdef CARTSLAM_RECORD_SAMPLES
+    cv::VideoWriter videoWriter;
+#endif
 };
 }  // namespace cart

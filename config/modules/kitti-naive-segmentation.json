@@ -1,0 +1,17 @@
+[
+    {
+        "type": "disparity",
+        "smoothing_radius": 2,
+        "smoothing_iterations": 1
+    },
+    {
+        "type": "disparity_planeseg",
+        "parameter_provider": {
+            "type": "histogram_peak"
+        }
+    },
+    {
+        "type": "disparity_planeseg_visualization",
+        "show_histogram": true
+    }
+]

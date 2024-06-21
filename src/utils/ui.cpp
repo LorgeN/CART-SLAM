@@ -20,6 +20,27 @@ std::vector<cv::Point2i> getRandomPoints(const int count, const cv::Size &size) 
     return points;
 }
 
+void ImageThread::stop() {
+    this->thread.interrupt();
+    this->thread.join();
+
+    cv::destroyAllWindows();
+
+#ifdef CARTSLAM_RECORD_SAMPLES
+    for (auto provider : this->providers) {
+        auto sharedProvider = provider.lock();
+        if (!sharedProvider) {
+            continue;
+        }
+
+        if (sharedProvider->videoWriter.isOpened()) {
+            sharedProvider->videoWriter.release();
+            std::cout << "Saved video for " << sharedProvider->name << std::endl;
+        }
+    }
+#endif
+}
+
 void ImageThread::appendImageProvider(const boost::weak_ptr<ImageProvider> provider) {
     boost::lock_guard<boost::mutex> lock(this->dataMutex);
     auto sharedProvider = provider.lock();
@@ -37,7 +58,7 @@ ImageThread::ImageThread() {
     LOG4CXX_DEBUG(this->logger, "Starting thread");
     this->thread = boost::thread(boost::bind(&ImageThread::run, this));
 
-#ifdef CARTSLAM_SAVE_SAMPLES
+#if defined(CARTSLAM_SAVE_SAMPLES) || defined(CARTSLAM_RECORD_SAMPLES)
     // Check if samples folder exists
     if (!std::filesystem::exists("samples")) {
         std::filesystem::create_directory("samples");
@@ -118,7 +139,21 @@ void ImageThread::run() {
                 localImage = provider->image.clone();
             }
 
+#ifdef CARTSLAM_RECORD_SAMPLES
+            if (!provider->videoWriter.isOpened()) {
+                std::stringstream ss;
+                ss << "samples/recording_" << provider->name << ".avi";
+                if (!provider->videoWriter.open(ss.str(), cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 10, localImage.size())) {
+                    LOG4CXX_ERROR(this->logger, "Could not open video writer for " << provider->name);
+                }
+            }
+#endif
+
             cv::imshow(provider->name, localImage);
+
+#ifdef CARTSLAM_RECORD_SAMPLES
+            provider->videoWriter.write(localImage);
+#endif
         }
 
         if (allEmpty) {

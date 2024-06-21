@@ -1,0 +1,27 @@
+[
+    {
+        "type": "zed_disparity"
+    },
+    {
+        "type": "superpixels",
+        "initial_iterations": 24,
+        "iterations": 12,
+        "block_size": 12,
+        "reset_iterations": 64
+    },
+    {
+        "type": "optflow"
+    },
+    {
+        "type": "disparity_derivative"
+    },
+    {
+        "type": "depth"
+    },
+    {
+        "type": "planefit"
+    },
+    {
+        "type": "planefit_visualization"
+    }
+]

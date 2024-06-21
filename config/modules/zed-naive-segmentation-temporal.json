@@ -1,0 +1,23 @@
+[
+    {
+        "type": "optflow"
+    },
+    {
+        "type": "zed_disparity"
+    },
+    {
+        "type": "disparity_planeseg",
+        "parameter_provider": {
+            "type": "static",
+            "horizontal_range_min": 1,
+            "horizontal_range_max": 30,
+            "vertical_range_min": -3,
+            "vertical_range_max": 1
+        },
+        "use_temporal_smoothing": true
+    },
+    {
+        "type": "disparity_planeseg_visualization",
+        "show_histogram": true
+    }
+]

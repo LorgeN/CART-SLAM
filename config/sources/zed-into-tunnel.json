@@ -1,0 +1,5 @@
+{
+    "type": "zed",
+    "include_disparity": true,
+    "path": "~/Datasets/ZED/2023-07-11 Multi ZED Summer/ZED camera svo files/2023-07-11_11-30-51_5256916_HD1080_FPS15.svo"
+}

@@ -1,12 +1,15 @@
 #include <iostream>
 
-#include "cartslam.hpp"
 #include "cartconfig.hpp"
+#include "cartslam.hpp"
 #include "logging.hpp"
+#include "utils/ui.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cout << "Please provide an image file to process." << std::endl;
+        std::cout << "Please provide a config file." << std::endl;
+        std::cout << "Usage 1: " << argv[0] << " <config file>" << std::endl;
+        std::cout << "Usage 2: " << argv[0] << " <data source config> <module config>" << std::endl;
         return 1;
     }
 
@@ -14,7 +17,20 @@ int main(int argc, char* argv[]) {
 
     auto logger = cart::getLogger("main");
 
-    auto system = cart::config::readSystemConfig(argv[1]);
+    boost::shared_ptr<cart::System> system;
+    try {
+        if (argc == 2) {
+            system = cart::config::readSystemConfig(argv[1]);
+        } else {
+            auto dataSource = cart::config::readDataSourceConfig(argv[1]);
+            system = boost::make_shared<cart::System>(dataSource);
+            cart::config::readModuleConfig(argv[2], system);
+        }
+    } catch (const std::exception& e) {
+        LOG4CXX_ERROR(logger, "Error in configuration: " << e.what());
+        return 1;
+    }
+
     auto dataSource = system->getDataSource();
 
     if (dataSource->isFinished()) {
@@ -29,17 +45,24 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        system->run().then([logger](boost::future<void> future) {
+        last = system->run().then([logger](boost::future<void> future) {
             try {
                 future.get();
             } catch (const std::exception& e) {
                 LOG4CXX_ERROR(logger, "Error in processing: " << e.what());
             }
-        }).wait();
+        });
     }
 
-    //last.get();
+    LOG4CXX_INFO(logger, "Waiting for last run to finish");
+
+    last.get();
 
     system->getThreadPool().join();
+
+    cart::ImageThread::getInstance().stop();
+
+    LOG4CXX_INFO(logger, "Finished! Good bye :)");
+
     return 0;
 }

@@ -1,0 +1,10 @@
+[
+    {
+        "type": "disparity",
+        "smoothing_radius": 3,
+        "smoothing_iterations": 1
+    },
+    {
+        "type": "disparity_visualization"
+    }
+]

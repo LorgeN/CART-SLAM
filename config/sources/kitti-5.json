@@ -1,0 +1,5 @@
+{
+    "type": "kitti",
+    "path": "~/Datasets/KITTI/dataset",
+    "sequence": 5
+}

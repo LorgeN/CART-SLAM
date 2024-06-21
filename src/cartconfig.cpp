@@ -79,25 +79,7 @@ inline boost::shared_ptr<PlaneParameterProvider> readParameterProvider(const nlo
     return nullptr;
 }
 
-boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
-    std::ifstream file(cart::util::resolvePath(path));
-
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open file " + path + ": " + strerror(errno));
-    }
-
-    nlohmann::json data = nlohmann::json::parse(file);
-
-    if (data.find(CART_CONFIG_KEY_DATA_SOURCE) == data.end()) {
-        throw std::runtime_error("Data source not found in configuration file.");
-    }
-
-    if (data.find(CART_CONFIG_KEY_MODULES) == data.end()) {
-        throw std::runtime_error("Modules not found in configuration file.");
-    }
-
-    auto dataSourceConfig = data[CART_CONFIG_KEY_DATA_SOURCE];
-
+boost::shared_ptr<cart::DataSource> createDataSource(const nlohmann::json &dataSourceConfig) {
     if (!dataSourceConfig.is_object()) {
         throw std::runtime_error("Data source configuration is not an object.");
     }
@@ -118,13 +100,15 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
             throw std::runtime_error("Unknown data source type.");
     }
 
-    auto system = boost::make_shared<cart::System>(dataSource);
+    return dataSource;
+}
 
-    auto modulesConfig = data[CART_CONFIG_KEY_MODULES];
-
+void applyModuleConfig(const nlohmann::json &modulesConfig, boost::shared_ptr<cart::System> system) {
     if (!modulesConfig.is_array()) {
         throw std::runtime_error("Modules configuration is not an array.");
     }
+
+    auto dataSource = system->getDataSource();
 
     for (const auto &moduleConfig : modulesConfig) {
         if (!moduleConfig.is_object()) {
@@ -241,10 +225,65 @@ boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
                 throw std::runtime_error("Unknown module type " + moduleType + ".");
         }
     }
+}
 
+boost::shared_ptr<cart::DataSource> readDataSourceConfig(const std::string path) {
+    std::ifstream file(cart::util::resolvePath(path));
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file " + path + ": " + strerror(errno));
+    }
+
+    nlohmann::json data = nlohmann::json::parse(file);
+    return createDataSource(data);
+}
+
+void readModuleConfig(const std::string path, boost::shared_ptr<cart::System> system) {
+    std::ifstream file(cart::util::resolvePath(path));
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file " + path + ": " + strerror(errno));
+    }
+
+    nlohmann::json data = nlohmann::json::parse(file);
+    applyModuleConfig(data, system);
+}
+
+boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
+    std::ifstream file(cart::util::resolvePath(path));
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open file " + path + ": " + strerror(errno));
+    }
+
+    nlohmann::json data = nlohmann::json::parse(file);
+
+    if (data.find(CART_CONFIG_KEY_DATA_SOURCE) == data.end()) {
+        throw std::runtime_error("Data source not found in configuration file.");
+    }
+
+    if (data.find(CART_CONFIG_KEY_MODULES) == data.end()) {
+        throw std::runtime_error("Modules not found in configuration file.");
+    }
+
+    auto dataSourceConfig = data[CART_CONFIG_KEY_DATA_SOURCE];
+    auto dataSource = createDataSource(dataSourceConfig);
+
+    auto system = boost::make_shared<cart::System>(dataSource);
+
+    auto modulesConfig = data[CART_CONFIG_KEY_MODULES];
+    applyModuleConfig(modulesConfig, system);
     return system;
 }
 #else
+boost::shared_ptr<cart::DataSource> readDataSourceConfig(const std::string path) {
+    throw std::runtime_error("JSON configuration not available.");
+}
+
+void readModuleConfig(const std::string path, boost::shared_ptr<cart::System> system) {
+    throw std::runtime_error("JSON configuration not available.");
+}
+
 boost::shared_ptr<cart::System> readSystemConfig(const std::string path) {
     throw std::runtime_error("JSON configuration not available.");
 }

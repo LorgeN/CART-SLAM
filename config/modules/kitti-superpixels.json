@@ -1,0 +1,23 @@
+[
+    {
+        "type": "disparity",
+        "smoothing_radius": 3,
+        "smoothing_iterations": 3
+    },
+    {
+        "type": "disparity_derivative"
+    },
+    {
+        "type": "superpixels",
+        "initial_iterations": 24,
+        "iterations": 8,
+        "block_size": 10,
+        "reset_iterations": 64,
+        "disparity_weight": 1.0,
+        "compactness_weight": 0.03,
+        "progressive_compactness_cost": 1.0
+    },
+    {
+        "type": "superpixels_visualization"
+    }
+]

@@ -64,6 +64,7 @@ set_target_properties( cart_slam PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 OPTION(ENABLE_TIMING "Generate a timing file for each run" OFF)
 OPTION(ENABLE_SAVE_SAMPLES "Save samples of visualizations to disk" OFF)
+OPTION(ENABLE_RECORD_SAMPLES "Record samples of visualizations to disk" OFF)
 
 if (ENABLE_TIMING)
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_TIMING )
@@ -71,6 +72,10 @@ endif()
 
 if (ENABLE_SAVE_SAMPLES)
     target_compile_definitions( cart_slam PRIVATE CARTSLAM_SAVE_SAMPLES )
+endif()
+
+if (ENABLE_RECORD_SAMPLES)
+    target_compile_definitions( cart_slam PRIVATE CARTSLAM_RECORD_SAMPLES )
 endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
