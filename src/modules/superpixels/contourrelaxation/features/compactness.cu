@@ -26,6 +26,11 @@ void CompactnessFeature::initializeCUDAFeature(CUDAFeature**& cudaFeature, const
 }
 
 __device__ inline void updateCompactnessCost(LabelStatisticsGauss& labelStats) {
+    if (labelStats.pixelCount == 0) {
+        labelStats.featureCost = 0;
+        return;
+    }
+
     labelStats.featureCost = labelStats.squareValueSum - (SQUARED(labelStats.valueSum) / static_cast<double>(labelStats.pixelCount));
 }
 
@@ -66,11 +71,6 @@ __device__ void CUDACompactnessFeature::initializeStatistics(const cv::cuda::Ptr
     // Set the image height in a single thread
     if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0) {
         height = labelImage.rows;
-    }
-
-    for (label_t curLabel = 0; curLabel <= maxLabelId; ++curLabel) {
-        updateCompactnessCost(labelStatisticsPosX[curLabel]);
-        updateCompactnessCost(labelStatisticsPosY[curLabel]);
     }
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;

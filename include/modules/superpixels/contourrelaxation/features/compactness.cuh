@@ -62,7 +62,7 @@ class CompactnessFeature : public IFeature {
     const double progressiveCost;
 
    public:
-    CompactnessFeature(const double progressiveCost = 1.0) : IFeature("Compactness"), progressiveCost(progressiveCost) {}
+    CompactnessFeature(const double progressiveCost = 0.0) : IFeature("Compactness"), progressiveCost(progressiveCost) {}
 
     void initializeCUDAFeature(CUDAFeature**& cudaFeature, const label_t maxLabelId, const cv::cuda::Stream& stream = cv::cuda::Stream::Null()) override;
 };

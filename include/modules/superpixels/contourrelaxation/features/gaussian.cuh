@@ -24,7 +24,7 @@ struct LabelStatisticsGauss {
     /**
      * @brief Default constructor to ensure that all members are initialized to sensible values.
      */
-    __device__ __host__ LabelStatisticsGauss() : pixelCount(0), valueSum(0), squareValueSum(0) {}
+    __device__ __host__ LabelStatisticsGauss() : pixelCount(0), valueSum(0), squareValueSum(0), featureCost(0) {}
 };
 
 /**

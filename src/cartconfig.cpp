@@ -126,11 +126,11 @@ void applyModuleConfig(const nlohmann::json &modulesConfig, boost::shared_ptr<ca
                     get(moduleConfig, "block_size", 12),
                     get(moduleConfig, "reset_iterations", 64),
                     get(moduleConfig, "direct_clique_cost", 0.5),
-                    get(moduleConfig, "diagonal_clique_cost", 0.5 / sqrt(2)),
-                    get(moduleConfig, "compactness_weight", 0.05),
+                    get(moduleConfig, "diagonal_clique_cost", get(moduleConfig, "direct_clique_cost", 0.5) / sqrt(2)),
+                    get(moduleConfig, "compactness_weight", 0.1),
                     get(moduleConfig, "progressive_compactness_cost", 0.0),
-                    get(moduleConfig, "image_weight", 1.0),
-                    get(moduleConfig, "disparity_weight", 1.25));
+                    get(moduleConfig, "image_weight", 1.5),
+                    get(moduleConfig, "disparity_weight", 1.0));
                 break;
             case hash("superpixels_visualization"):
                 system->addModule<cart::SuperPixelVisualizationModule>();
